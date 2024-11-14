@@ -4,42 +4,48 @@
 
 ## About
 
-Azure SQL Database Hyperscale elastic pools became generally available (GA) on September 12, 2024. However, we at TrackAbout found there was no built-in features to scale pools up and down based on load. Since the ability to rapidly scale is a signature feature of Hyperscale, and one that promises significant cost savings over traditional elastic pools, we were reluctant to migrate. Until now.
+[Azure SQL Database Hyperscale elastic pools](https://learn.microsoft.com/en-us/azure/azure-sql/database/hyperscale-elastic-pool-overview) became [generally available (GA) on September 12, 2024](https://techcommunity.microsoft.com/blog/azuresqlblog/elastic-pools-for-azure-sql-database-hyperscale-now-generally-available/4242658).
 
-This is our implementation of an automatic scaling algorithm for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
+Unfortunately, there aren't built-in features to scale pools up and down based on load. Since the ability to rapidly scale is a signature feature of Hyperscale, and one that promises significant cost savings over traditional elastic pools, we in the engineering team at [TrackAbout](https://corp.trackabout.com) were reluctant to migrate.
+
+Until now.
+
+In this repo, we offer our implementation of an automatic scaler,AutoScaler, for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
 
 A single instance of AutoScaler can manage *multiple* elastic pools within a single Azure SQL Server.
 
-To manage multiple Azure SQL Servers, run multiple instances of the AutoScaler.
+To manage multiple Azure SQL Servers, you can run multiple instances of the AutoScaler.
 
-Scaling decisions are made based on looking back at historical elastic pool metrics provided by the `sys.dm_elastic_pool_resource_stats` view. We look at three key metrics:
+Scaling decisions are made based on looking back at historical elastic pool metrics provided by the `sys.dm_elastic_pool_resource_stats` view within a database inside a Hyperscale pool.
+
+We look at three key metrics:
 
 - Average CPU Percentage
 - Average Instance CPU Percentage
 - Worker Percentage
 
-In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the three most important CPU-related metrics to monitor for scaling operations.
+In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the three most important CPU-related metrics to monitor for scaling operations within an elastic pool.
 
 Through configuration, you can control:
 
 - High and low threshold settings for each metric
-- How far into the past to look at metrics
-- How many low or high thresholds we must exceed to scale
-- Floor and ceiling vCore levels to keep your pool within desired boundaries.
+- How back in time to look at performance metrics
+- How many low or high thresholds must be exceeded to trigger scaling over that time period
+- Floor and ceiling vCore levels to keep your pool within desired boundaries
 
-We use a hysteresis approach to prevent rapid, repetitive changes (thrashing) in response to fluctuating metrics. This involves delaying the scaling decision or requiring that metrics remain above or below certain thresholds for a sustained period before triggering a scaling action.
+We use a hysteresis-based approach to prevent rapid, repetitive changes (thrashing) in response to fluctuating metrics. Traditionally, this kind of approach involves delaying a scaling decision by requiring that metrics remain above or below certain thresholds for a sustained period.
 
 ## Disclaimer
 
 Azure Elastic Pools can incur **VERY HIGH COSTS**.
 
-**YOU** are solely responsible for your own costs should you choose to use this project.
+**YOU** are solely responsible for your own costs should you choose to use this code.
 
 *We accept no responsibility for costs you incur using this code.*
 
-**YOU HAVE BEEN WARNED!**
+We **strongly** recommend you study this project and its unit tests and run your own load tests to ensure this autoscaler behaves in a manner you are comfortable with.
 
-We **strongly** recommend you run load tests to ensure this autoscaler behaves in a manner you are comfortable with.
+**YOU HAVE BEEN WARNED!**
 
 ## Inspiration
 
