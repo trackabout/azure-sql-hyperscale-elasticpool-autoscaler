@@ -29,7 +29,7 @@ In our experience at TrackAbout operating Azure SQL elastic pools since 2016, th
 Through configuration, you can control:
 
 - High and low threshold settings for each metric
-- How back in time to look at performance metrics
+- How far back in time to look at performance metrics
 - How many low or high thresholds must be exceeded to trigger scaling over that time period
 - Floor and ceiling vCore levels to keep your pool within desired boundaries
 
