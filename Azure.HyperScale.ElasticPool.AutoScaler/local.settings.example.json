@@ -1,0 +1,33 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "SubscriptionId": "...",
+    "SqlInstanceName": "...",
+    "ResourceGroupName": "...",
+    "ElasticPools": "pool1,pool2",
+    "LowCpuPercent": "20",
+    "HighCpuPercent": "70",
+    "LowWorkersPercent": "30",
+    "HighWorkersPercent": "50",
+    "LowInstanceCpuPercent": "20",
+    "HighInstanceCpuPercent": "70",
+    "HighCountThreshold": "5",
+    "LowCountThreshold": "15",
+    "LookBackSeconds": "900",
+    "VCoreFloor": "4",
+    "VCoreCeiling": "16",
+    "VCoreOptions": "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128",
+    "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"
+  },
+  "ConnectionStrings": {
+    "PoolDbConnection": "...",
+    "MetricsSqlConnection": "...",
+    "MasterSqlConnection": "..."
+  },
+  "Host": {
+    "CORS": "*"
+  }
+}
