@@ -90,28 +90,31 @@ public class AutoScalerConfiguration
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
+    }
 
-        Console.WriteLine("Configuration:");
-        Console.WriteLine($"PoolDbConnection: {PoolDbConnection}");
-        Console.WriteLine($"MetricsSqlConnection: {MetricsSqlConnection}");
-        Console.WriteLine($"MasterSqlConnection: {MasterSqlConnection}");
-        Console.WriteLine($"SubscriptionId: {SubscriptionId}");
-        Console.WriteLine($"SqlInstanceName: {SqlInstanceName}");
-        Console.WriteLine($"ResourceGroupName: {ResourceGroupName}");
-        Console.WriteLine($"ElasticPools: {string.Join(", ", ElasticPools)}");
-        Console.WriteLine($"LowCpuPercent: {LowCpuPercent}");
-        Console.WriteLine($"HighCpuPercent: {HighCpuPercent}");
-        Console.WriteLine($"LowWorkersPercent: {LowWorkersPercent}");
-        Console.WriteLine($"HighWorkersPercent: {HighWorkersPercent}");
-        Console.WriteLine($"LowInstanceCpuPercent: {LowInstanceCpuPercent}");
-        Console.WriteLine($"HighInstanceCpuPercent: {HighInstanceCpuPercent}");
-        Console.WriteLine($"LowCountThreshold: {LowCountThreshold}");
-        Console.WriteLine($"HighCountThreshold: {HighCountThreshold}");
-        Console.WriteLine($"LookBackSeconds: {LookBackSeconds}");
-        Console.WriteLine($"VCoreFloor: {VCoreFloor}");
-        Console.WriteLine($"VCoreCeiling: {VCoreCeiling}");
-        Console.WriteLine($"VCoreOptions: {string.Join(", ", VCoreOptions)}");
-        Console.WriteLine($"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}");
+    public override string ToString()
+    {
+        return $"Configuration:\n" +
+               $"PoolDbConnection: {PoolDbConnection}\n" +
+               $"MetricsSqlConnection: {MetricsSqlConnection}\n" +
+               $"MasterSqlConnection: {MasterSqlConnection}\n" +
+               $"SubscriptionId: {SubscriptionId}\n" +
+               $"SqlInstanceName: {SqlInstanceName}\n" +
+               $"ResourceGroupName: {ResourceGroupName}\n" +
+               $"ElasticPools: {string.Join(", ", ElasticPools)}\n" +
+               $"LowCpuPercent: {LowCpuPercent}\n" +
+               $"HighCpuPercent: {HighCpuPercent}\n" +
+               $"LowWorkersPercent: {LowWorkersPercent}\n" +
+               $"HighWorkersPercent: {HighWorkersPercent}\n" +
+               $"LowInstanceCpuPercent: {LowInstanceCpuPercent}\n" +
+               $"HighInstanceCpuPercent: {HighInstanceCpuPercent}\n" +
+               $"LowCountThreshold: {LowCountThreshold}\n" +
+               $"HighCountThreshold: {HighCountThreshold}\n" +
+               $"LookBackSeconds: {LookBackSeconds}\n" +
+               $"VCoreFloor: {VCoreFloor}\n" +
+               $"VCoreCeiling: {VCoreCeiling}\n" +
+               $"VCoreOptions: {string.Join(", ", VCoreOptions)}\n" +
+               $"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)
