@@ -245,3 +245,4 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 ### Clamping to Ceiling and Floor
 
 **IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value *outside the bounds of the floor and ceiling settings*, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
+
