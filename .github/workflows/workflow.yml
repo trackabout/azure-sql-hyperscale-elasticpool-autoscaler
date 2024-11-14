@@ -1,0 +1,31 @@
+name: Build, Test, and Deploy to Azure Function App
+
+on:
+  pull_request:
+    branches: ["main"]
+
+env:
+  AZURE_FUNCTIONAPP_NAME: 'AzureHyperScaleElasticPoolAutoScaler'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: 'Azure.HyperScale.ElasticPool.AutoScaler'
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v4
+
+      - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+
+      - name: Build project
+        run: dotnet build ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --configuration Release --no-restore
+
+      - name: Run Tests
+        run: dotnet test Azure.HyperScale.ElasticPool.AutoScaler.Tests --no-build --configuration Release
