@@ -4,11 +4,13 @@
 
 ## About
 
-This is an implementation of an automatic scaling algorithm for Azure SQL DB Hyperscale Elastic Pools within an Azure Function.
+Azure SQL Database Hyperscale elastic pools became generally available (GA) on September 12, 2024. However, we at TrackAbout found there was no built-in features to scale pools up and down based on load. Since the ability to rapidly scale is a signature feature of Hyperscale, and one that promises significant cost savings over traditional elastic pools, we were reluctant to migrate. Until now.
 
-A single instance of this function can manage *multiple* elastic pools within a single Azure SQL Server.
+This is our implementation of an automatic scaling algorithm for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
 
-To manage multiple Azure SQL Servers, run multiple instances of the function.
+A single instance of AutoScaler can manage *multiple* elastic pools within a single Azure SQL Server.
+
+To manage multiple Azure SQL Servers, run multiple instances of the AutoScaler.
 
 Scaling decisions are made based on looking back at historical elastic pool metrics provided by the `sys.dm_elastic_pool_resource_stats` view. We look at three key metrics:
 
@@ -60,19 +62,19 @@ The ability to query the `master` database of the Azure SQL Server is required. 
 
 ### Permissions within pool databases
 
-The function will query performance metrics within individual databases in the pool by reading the view `sys.dm_elastic_pool_resource_stats`. To get the most timely metrics, you must query into a pool database. While metrics are available in `master`, it is a known limitation that those metrics can be significantly delayed. We've seen them delayed by over 5 minutes.
+The AutoScaler will query performance metrics within individual databases in the pool by reading the view `sys.dm_elastic_pool_resource_stats`. To get the most timely metrics, you must query into a pool database. While metrics are available in `master`, it is a known limitation that those metrics can be significantly delayed. We've seen them delayed by over 5 minutes.
 
-For our implementation, we decided to pick a pool database *at random* to query for metrics measurement each time the function executes.
+For our implementation, we decided to pick a pool database *at random* to query for metrics measurement each time the AutoScaler executes.
 
 We chose this because:
 
-1. Databases come and go. We did not want our autoscaler to break or to have to reconfigure the function if our chosen target database was dropped.
+1. Databases come and go. We did not want our autoscaler to break or to have to reconfigure the AutoScaler if our chosen target database was dropped.
 2. It seemed unfair to keep hitting the same database every iteration for metrics.
 3. We could have chosen to add a new, empty database for querying metrics. However, Hyperscale Elastic Pools support only 25 databases per pool. That's not much, and to sacrifice one simply for metrics querying felt wasteful.
 
 Therefore we chose the random method, which should never break and never require reconfiguring.
 
-You might, however, wish to modify the function to support a single named database per elastic pool.
+You might, however, wish to modify the AutoScaler to support a single named database per elastic pool.
 
 ### hs.AutoScalerMonitor Table
 
@@ -98,18 +100,18 @@ The data logged is useful for understanding how and why the autoscaler acted.
 
 ### Logging
 
-The function logs just about everything it does.
+The AutoScaler logs just about everything it does.
 
 Logging is sent to [Azure Application Insights](https://docs.microsoft.com/en-us/azure/azure-functions/functions-monitoring#log-custom-telemetry-in-c-functions), so actions can be monitored from an Azure Portal dashboard or alerted using Azure Monitor.
 
 ### Azure Function
 
-Deploy the solution to an Azure Function and then set up the application settings using the contents of `local.settings.example.json` as a template.
+Deploy the solution to Azure and set up the application settings using the contents of `local.settings.example.json` as a guide.
 
 #### Connection Strings
 
 - **MasterSqlConnection**: Connection string to the Azure SQL Server master database.
-- **PoolDbConnection**: This is a templatized connection string used to connect to one of the databases in the Elastic Pool. A database in each pool will be chosen at random each time the function runs. The function must connect to a database within the pool in order to sample the performance metrics. This is because the most rapidly-updated source of the performance metrics is gettable only within a pool database, not the `master` database.
+- **PoolDbConnection**: This is a templatized connection string used to connect to one of the databases in the Elastic Pool. A database in each pool will be chosen at random each time the AutoScaler runs. The AutoScaler must connect to a database within the pool in order to sample the performance metrics. This is because the most rapidly-updated source of the performance metrics is gettable only within a pool database, not the `master` database.
 - **MetricsSQLConnection**: Connection string to the Azure SQL Database containing the `hs.AutoScalerMonitor` table. This database can live anywhere you like. The user must have write access to the `hs.AutoScalerMonitor` table. Leave it blank if you don't want to use it.
 
 #### Settings
@@ -128,7 +130,7 @@ Deploy the solution to an Azure Function and then set up the application setting
 
 ## Hysteresis Configuration
 
-The Hyperscale elastic pool environment generally posts new performance metrics every 15 seconds or so. That is why this function is initially set to run every 15 seconds. You will want to set parameters that provide a balance between responsiveness and stability. Here are some recommendations based on the metrics frequency:
+The Hyperscale elastic pool environment generally posts new performance metrics every 15 seconds or so. That is why this AutoScaler is initially set to run every 15 seconds. You will want to set parameters that provide a balance between responsiveness and stability. Here are some recommendations based on the metrics frequency:
 
 ### 1. **LookBackSeconds**
 
@@ -176,7 +178,7 @@ This approach allows for stable and responsive scaling while preventing frequent
 
 ## Unit Tests
 
-You may find value in reading our unit tests to understand how the function will choose to scale (up, down or hold) given various inputs.
+You may find value in reading our unit tests to understand how the AutoScaler will choose to scale (up, down or hold) given various inputs.
 
 ## Load Testing
 
@@ -192,7 +194,7 @@ Creating two databases isn't terribly hard. We tested with two and three databas
 
 Using SQL Query Stress is fairly straightforward.
 
-First, have the Azure Function running and watch its output. You can build and run it locally or deploy it to Azure.
+First, have the AutoScaler running and watch its output. You can build and run it locally or deploy it to Azure.
 
 Launch a copy of SQL Query Stress for each target database. For each:
 
@@ -202,9 +204,9 @@ Launch a copy of SQL Query Stress for each target database. For each:
 - Choose a Number of Threads. I chose 4.
 - Delay between queries (ms): 50
 
-Ignore the Parameter Substitution function, we aren't using it.
+Ignore the Parameter Substitution feature, we aren't using it.
 
-Press `GO` when ready. Follow the output of the Azure function to see it in action. You may also query `hs.AutoScalerMonitor` using `select * from hs.AutoScalerMonitor`
+Press `GO` when ready. Follow the output of the AutoScaler to see it in action. You may also query `hs.AutoScalerMonitor` using `select * from hs.AutoScalerMonitor`
 
 Repeat for each test database, making sure to aim each instance of the tool at a different database in the pool.
 
@@ -212,21 +214,21 @@ Hit `CANCEL` in each when you've completed testing.
 
 ## Stateless Design
 
-This function does store any state from run to run. We can rely solely on the stored metrics within the elastic pool to make decisions on each iteration.
+The AutoScaler does store any state from run to run. We can rely solely on the stored metrics within the elastic pool to make decisions on each iteration.
 
-The writing of scaling actions to the `hs.AutoScalerMonitor` is optional, and the function does not read from that table.
+The writing of scaling actions to the `hs.AutoScalerMonitor` is optional, and the AutoScaler does not read from that table.
 
 ## Notes and Observations
 
 ### Skipping Pools In Transition
 
-While a scaling operation is taking place for a given pool, we check in the `master` database against (`sys.dm_operation_status`)[https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-operation-status-azure-sql-database?view=azuresqldb-current]. If a pool is in any of the transitional states (Pending, In Progress, Cancel in progress), we do nothing else with that pool during this execution of the function. Other pools in the list will still be handled.
+While a scaling operation is taking place for a given pool, we check in the `master` database against (`sys.dm_operation_status`)[https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-operation-status-azure-sql-database?view=azuresqldb-current]. If a pool is in any of the transitional states (Pending, In Progress, Cancel in progress), we do nothing else with that pool during this execution. Other pools in the list will still be handled.
 
 ### Pool Metrics are Cleared Following a Transition
 
-For about a minute following a scale-up or scale-down operation, the function will be unable to read any metrics. The metrics have been cleared, and need to start accumulating again.
+For about a minute following a scale-up or scale-down operation, the AutoScaler will be unable to read any metrics. The metrics have been cleared, and need to start accumulating again.
 
-A positive implication of this is that when the function runs after a transition, it cannot see any of the metrics from before. Thus it cannot be "fooled" into acting based on the earlier state.
+A positive implication of this is that when the AutoScaler runs after a transition, it cannot see any of the metrics from before. Thus it cannot be "fooled" into acting based on the earlier state.
 
 ### Connection Resiliency
 
@@ -246,3 +248,8 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 
 **IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value *outside the bounds of the floor and ceiling settings*, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
 
+## Enjoy!
+
+    Larry Silverman
+    Chief Technology Officer
+    TrackAbout, Inc.
