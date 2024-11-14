@@ -222,7 +222,7 @@ The writing of scaling actions to the `hs.AutoScalerMonitor` is optional, and th
 
 ### Skipping Pools In Transition
 
-While a scaling operation is taking place for a given pool, we check in the `master` database against (`sys.dm_operation_status`)[https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-operation-status-azure-sql-database?view=azuresqldb-current]. If a pool is in any of the transitional states (Pending, In Progress, Cancel in progress), we do nothing else with that pool during this execution. Other pools in the list will still be handled.
+While a scaling operation is taking place for a given pool, we check in the `master` database against [`sys.dm_operation_status`](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-operation-status-azure-sql-database?view=azuresqldb-current). If a pool is in any of the transitional states (Pending, In Progress, Cancel in progress), we do nothing else with that pool during this execution. Other pools in the list will still be handled.
 
 ### Pool Metrics are Cleared Following a Transition
 
@@ -250,6 +250,6 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 
 ## Enjoy!
 
-    Larry Silverman
-    Chief Technology Officer
-    TrackAbout, Inc.
+Larry Silverman\
+Chief Technology Officer\
+TrackAbout, Inc.
