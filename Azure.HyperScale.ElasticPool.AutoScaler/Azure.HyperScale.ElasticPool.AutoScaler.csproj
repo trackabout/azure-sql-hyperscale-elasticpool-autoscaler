@@ -11,7 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="azure.identity" Version="1.13.1" />
+    <PackageReference Include="azure.identity" Version="1.13.2" />
     <PackageReference Include="azure.resourcemanager" Version="1.13.0" />
     <PackageReference Include="azure.resourcemanager.sql" Version="1.2.1" />
     <PackageReference Include="dapper" Version="2.1.35" />
