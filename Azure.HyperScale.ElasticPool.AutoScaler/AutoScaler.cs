@@ -33,6 +33,10 @@ public class AutoScaler(
     private const string HyperScaleTier = "Hyperscale";
     private const string SentryTagSqlInstanceName = "TargetDB";
 
+    public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
+
+    public static string? AzureClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
+
     [Function("AutoScaler")]
     // Can use HttpTrigger for testing the function. Hitting an HTTP trigger is a good way to test and debug.
     // Much easier than a Timer
@@ -42,6 +46,14 @@ public class AutoScaler(
     {
         try
         {
+            // Check permissions
+            var hasPermissions = await CheckPermissionsAsync().ConfigureAwait(false);
+            if (!hasPermissions)
+            {
+                logger.LogError("Insufficient permissions to access SQL server or elastic pools.");
+                return;
+            }
+
             // Check for pending scaling operations
             var poolsInTransition = await GetPoolsInTransitionAsync().ConfigureAwait(false);
             var poolsToConsider = autoScalerConfig.ElasticPools;
@@ -160,7 +172,7 @@ public class AutoScaler(
             var retryPolicy = GetRetryPolicy();
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                await using var masterConnection = new SqlConnection(autoScalerConfig.MasterSqlConnection);
+                await using var masterConnection = CreateSqlConnection(autoScalerConfig.MasterSqlConnection);
                 var metricDbsToQuery = await masterConnection
                     .QueryAsync<(string DatabaseName, string ElasticPoolName)>(findPoolDatabasesForMetrics)
                     .ConfigureAwait(false);
@@ -314,7 +326,7 @@ public class AutoScaler(
                 return await retryPolicy.ExecuteAsync(async () =>
                 {
                     // Create and dispose the connection within the retry scope
-                    await using var databaseConnection = new SqlConnection(autoScalerConfig.PoolDbConnection.Replace("{DatabaseName}", db.DatabaseName));
+                    await using var databaseConnection = CreateSqlConnection(autoScalerConfig.PoolDbConnection.Replace("{DatabaseName}", db.DatabaseName));
                     var metrics = (await databaseConnection.QueryAsync<UsageInfo>(hysteresisSql).ConfigureAwait(false)).ToList();
 
                     // ReSharper disable once PossibleMultipleEnumeration
@@ -373,7 +385,7 @@ public class AutoScaler(
 
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                await using var masterConnection = new SqlConnection(autoScalerConfig.MasterSqlConnection);
+                await using var masterConnection = CreateSqlConnection(autoScalerConfig.MasterSqlConnection);
                 var pools = (await masterConnection.QueryAsync<(string ElasticPoolInTransition, string State)>(sql)
                     .ConfigureAwait(false)).ToList();
 
@@ -482,7 +494,7 @@ public class AutoScaler(
 
         try
         {
-            await using var metricsConnection = new SqlConnection(autoScalerConfig.MetricsSqlConnection);
+            await using var metricsConnection = CreateSqlConnection(autoScalerConfig.MetricsSqlConnection);
             await metricsConnection.ExecuteAsync(
                 "INSERT INTO [hs].[AutoScalerMonitor] (ElasticPoolName, CurrentSLO, RequestedSLO, UsageInfo) " +
                 "VALUES (@ElasticPoolName, @CurrentSLO, @RequestedSLO, @UsageInfo)",
@@ -677,6 +689,45 @@ public class AutoScaler(
             {
                 scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
             }, SentryLevel.Error);
+        }
+    }
+
+    // Create a SQL connection with managed identity if the connection string contains the keyword
+    private static SqlConnection CreateSqlConnection(string connectionString)
+    {
+        if (connectionString.Contains("Active Directory Managed Identity") && IsUsingManagedIdentity)
+        {
+            var sqlConnection = new SqlConnection(connectionString);
+            sqlConnection.AccessToken = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            {
+                ManagedIdentityClientId = AzureClientId
+            }).GetToken(new TokenRequestContext(new[] { "https://database.windows.net/.default" })).Token;
+            return sqlConnection;
+        }
+        return new SqlConnection(connectionString);
+    }
+
+    // Check permissions to access SQL server and elastic pools
+    private async Task<bool> CheckPermissionsAsync()
+    {
+        try
+        {
+            var elasticPools = autoScalerConfig.ElasticPools;
+            foreach (var pool in elasticPools)
+            {
+                var elasticPool = await GetElasticPoolAsync(autoScalerConfig.ResourceGroupName, autoScalerConfig.SqlInstanceName, pool).ConfigureAwait(false);
+                if (elasticPool == null)
+                {
+                    logger.LogError($"Failed to access elastic pool: {pool}");
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RecordError(ex, "Error while checking permissions to access SQL server or elastic pools.");
+            return false;
         }
     }
 
