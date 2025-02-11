@@ -31,6 +31,7 @@ public class AutoScaler(
     AutoScalerConfiguration autoScalerConfig)
 {
     private const string HyperScaleTier = "Hyperscale";
+    private const string SentryTagSqlInstanceName = "TargetDB";
 
     [Function("AutoScaler")]
     // Can use HttpTrigger for testing the function. Hitting an HTTP trigger is a good way to test and debug.
@@ -657,8 +658,13 @@ public class AutoScaler(
     {
         logger.LogError(ex, message);
 
-        if (autoScalerConfig.IsSentryLoggingEnabled)       
-            SentrySdk.CaptureException(ex);
+        if (autoScalerConfig.IsSentryLoggingEnabled)
+        {
+            SentrySdk.CaptureException(ex, scope =>
+            {
+                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
+            });
+        }
     }
 
     private void RecordError(string message)
@@ -666,7 +672,12 @@ public class AutoScaler(
         logger.LogError(message);
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
-            SentrySdk.CaptureMessage(message, SentryLevel.Error);
+        {
+            SentrySdk.CaptureMessage(message, scope =>
+            {
+                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
+            }, SentryLevel.Error);
+        }
     }
 
 }
