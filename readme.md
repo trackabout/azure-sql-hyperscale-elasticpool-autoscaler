@@ -133,6 +133,8 @@ Deploy the solution to Azure and set up the application settings using the conte
 - **VCoreFloor**, **VCoreCeiling**: The minimum and maximum number of cores to use as bounds for scaling up and down. You'll probably always set VCoreFloor to the minimum vCore setting possible. You may wish to set a hard ceiling to control costs.
 - **VCoreOptions**: The list of available vCore options for the type of Hyperscale Elastic Pool being used. Copied from Azure documentation.
 - **PerDatabaseMaximums**: Controls the per-database maximum vCore setting for the pool at each step. Should map 1:1 with VCoreOptions.
+- **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false. 
+- **SentryDSN**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true. 
 
 ## Hysteresis Configuration
 

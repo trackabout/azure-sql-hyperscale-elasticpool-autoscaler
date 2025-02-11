@@ -39,37 +39,45 @@ public class AutoScaler(
 
     public async Task Run([TimerTrigger("*/15 * * * * *")] TimerInfo myTimer)
     {
-        // Check for pending scaling operations
-        var poolsInTransition = await GetPoolsInTransitionAsync().ConfigureAwait(false);
-        var poolsToConsider = autoScalerConfig.ElasticPools;
-
-        // If there are ongoing operations for specific elastic pools, exclude them from the rest of this execution.
-        if (poolsInTransition != null)
+        try
         {
+            // Check for pending scaling operations
+            var poolsInTransition = await GetPoolsInTransitionAsync().ConfigureAwait(false);
+            var poolsToConsider = autoScalerConfig.ElasticPools;
 
-            // Case-insensitive comparison of pool names, just in case we mistype them in the config.
-            // Remove from consideration any pools that are in transition.
-            var poolsInTransitionSet = new HashSet<string>(poolsInTransition, StringComparer.OrdinalIgnoreCase);
-            poolsToConsider = autoScalerConfig.ElasticPools
-                .Where(pool => !poolsInTransitionSet.Contains(pool))
-                .ToList();
+            // If there are ongoing operations for specific elastic pools, exclude them from the rest of this execution.
+            if (poolsInTransition != null)
+            {
+
+                // Case-insensitive comparison of pool names, just in case we mistype them in the config.
+                // Remove from consideration any pools that are in transition.
+                var poolsInTransitionSet = new HashSet<string>(poolsInTransition, StringComparer.OrdinalIgnoreCase);
+                poolsToConsider = autoScalerConfig.ElasticPools
+                    .Where(pool => !poolsInTransitionSet.Contains(pool))
+                    .ToList();
+            }
+
+            // If there are no pools to consider, log and return.
+            if (poolsToConsider.Count == 0)
+            {
+                logger.LogInformation($"No pools to evaluate this time for server {autoScalerConfig.SqlInstanceName}.");
+                return;
+            }
+
+            var poolMetrics = await SamplePoolMetricsAsync(poolsToConsider).ConfigureAwait(false);
+            if (poolMetrics == null)
+            {
+                RecordError($"Unexpected: SamplePoolMetricsAsync() returned null while sampling pool metrics for server {autoScalerConfig.SqlInstanceName}.");
+                return;
+            }
+
+            await CheckAndScalePoolsAsync(poolMetrics).ConfigureAwait(false);
+
         }
-
-        // If there are no pools to consider, log and return.
-        if (poolsToConsider.Count == 0)
+        catch (Exception ex)
         {
-            logger.LogInformation($"No pools to evaluate this time for server {autoScalerConfig.SqlInstanceName}.");
-            return;
+            RecordError(ex, "Unexpected error in AutoScaler.Run() function.");
         }
-
-        var poolMetrics = await SamplePoolMetricsAsync(poolsToConsider).ConfigureAwait(false);
-        if (poolMetrics == null)
-        {
-            logger.LogError($"Unexpected: SamplePoolMetricsAsync() returned null while sampling pool metrics for server {autoScalerConfig.SqlInstanceName}.");
-            return;
-        }
-
-        await CheckAndScalePoolsAsync(poolMetrics).ConfigureAwait(false);
     }
 
     private async Task CheckAndScalePoolsAsync(IEnumerable<UsageInfo> poolMetrics)
@@ -98,7 +106,7 @@ public class AutoScaler(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex,
+                RecordError(ex,
                     $"{serverAndPool}: Error while scaling from {currentVCore} to {newPoolSettings.VCore}");
             }
 
@@ -161,7 +169,7 @@ public class AutoScaler(
         }
         catch (SqlException ex)
         {
-            logger.LogError(ex, $"{autoScalerConfig.SqlInstanceName}: SamplePoolMetricsAsync() threw an error while measuring pool metrics.");
+            RecordError(ex, $"{autoScalerConfig.SqlInstanceName}: SamplePoolMetricsAsync() threw an error while measuring pool metrics.");
             return null;
         }
     }
@@ -319,7 +327,7 @@ public class AutoScaler(
             }
             catch (SqlException ex)
             {
-                logger.LogError(ex, $"{db.ElasticPoolName}: Error fetching metrics.");
+                RecordError(ex, $"{db.ElasticPoolName}: Error fetching metrics.");
                 return Enumerable.Empty<UsageInfo>();
             }
         });
@@ -381,7 +389,7 @@ public class AutoScaler(
         catch (SqlException ex)
         {
             // Log the exception with a descriptive message.
-            logger.LogError(ex, $"{autoScalerConfig.SqlInstanceName}: Failed to retrieve elastic pool transition status from master database.");
+            RecordError(ex, $"{autoScalerConfig.SqlInstanceName}: Failed to retrieve elastic pool transition status from master database.");
             return null;
         }
     }
@@ -488,7 +496,7 @@ public class AutoScaler(
         }
         catch (SqlException ex)
         {
-            logger.LogError(ex,
+            RecordError(ex,
                 $"{elasticPool.ElasticPoolName}: Error while writing metrics to AutoScalerMonitor table.");
         }
     }
@@ -517,7 +525,7 @@ public class AutoScaler(
         // If currentCpu is not found in the array (this would be unusual), return currentCpu.
         if (currentIndex == -1)
         {
-            logger.LogError($"{elasticPoolName}: Current vCore setting of {currentCpu} not found in the list of vCore options.");
+            RecordError($"{elasticPoolName}: Current vCore setting of {currentCpu} not found in the list of vCore options.");
             return currentCpu;
         }
 
@@ -582,14 +590,14 @@ public class AutoScaler(
 
             if (elasticPool == null)
             {
-                logger.LogError($"Elastic Pool Azure resource '{elasticPoolName}' not found.");
+                RecordError($"Elastic Pool Azure resource '{elasticPoolName}' not found.");
                 return;
             }
 
             // Check if the Elastic Pool is already at the desired vCore count
             if (elasticPool.Data.Sku.Capacity == (int)newPoolSettings.VCore)
             {
-                logger.LogError($"{elasticPoolName}: Pool is already at {newPoolSettings.VCore} vCores. Nothing to do.");
+                RecordError($"{elasticPoolName}: Pool is already at {newPoolSettings.VCore} vCores. Nothing to do.");
                 return;
             }
 
@@ -620,7 +628,7 @@ public class AutoScaler(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, $"{elasticPoolName}: Failed to scale pool to {newPoolSettings.VCore} vCores.");
+            RecordError(ex, $"{elasticPoolName}: Failed to scale pool to {newPoolSettings.VCore} vCores.");
         }
     }
 
@@ -640,8 +648,25 @@ public class AutoScaler(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, $"Failed to get Azure Resource Elastic Pool '{elasticPoolName}' in server '{serverName}' and resource group '{resourceGroupName}'.");
+            RecordError(ex, $"Failed to get Azure Resource Elastic Pool '{elasticPoolName}' in server '{serverName}' and resource group '{resourceGroupName}'.");
             return null;
         }
     }
+
+    private void RecordError(Exception ex, string message)
+    {
+        logger.LogError(ex, message);
+
+        if (autoScalerConfig.IsSentryLoggingEnabled)       
+            SentrySdk.CaptureException(ex);
+    }
+
+    private void RecordError(string message)
+    {
+        logger.LogError(message);
+
+        if (autoScalerConfig.IsSentryLoggingEnabled)
+            SentrySdk.CaptureMessage(message, SentryLevel.Error);
+    }
+
 }

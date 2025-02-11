@@ -23,8 +23,8 @@ public class AutoScalerConfiguration
     public double VCoreFloor { get; }
     public double VCoreCeiling { get; }
     public List<double> VCoreOptions { get; }
-
     public List<double> PerDatabaseMaximums { get; }
+    public bool IsSentryLoggingEnabled { get; }
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -90,6 +90,8 @@ public class AutoScalerConfiguration
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
+
+        IsSentryLoggingEnabled = configuration.GetValue<bool>("IsSentryLoggingEnabled");
     }
 
     public override string ToString()
@@ -114,7 +116,8 @@ public class AutoScalerConfiguration
                $"VCoreFloor: {VCoreFloor}\n" +
                $"VCoreCeiling: {VCoreCeiling}\n" +
                $"VCoreOptions: {string.Join(", ", VCoreOptions)}\n" +
-               $"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}";
+               $"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}\n" +
+               $"IsSentryLoggingEnabled: {IsSentryLoggingEnabled}";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)
