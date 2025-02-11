@@ -31,7 +31,7 @@ public class AutoScaler(
     AutoScalerConfiguration autoScalerConfig)
 {
     private const string HyperScaleTier = "Hyperscale";
-    private const string SentryTagSqlInstanceName = "TargetDB";
+    private const string SentryTagSqlInstanceName = "SqlInstanceName";
 
     public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
 
