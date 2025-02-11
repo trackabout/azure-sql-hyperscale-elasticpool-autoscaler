@@ -1,7 +1,7 @@
-name: Build, Test, and Deploy to Azure Function App
+name: Build and Test
 
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -10,7 +10,7 @@ env:
   DOTNET_VERSION: '8.0.x'
 
 jobs:
-  build-test-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -29,14 +29,3 @@ jobs:
 
       - name: Run Tests
         run: dotnet test Azure.HyperScale.ElasticPool.AutoScaler.Tests --configuration Release
-
-      - name: Publish Function App
-        run: dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --configuration Release --output ./publish
-
-      - name: Deploy to PRODUCTION
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
-          slot-name: PRODUCTION
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          package: ./publish
