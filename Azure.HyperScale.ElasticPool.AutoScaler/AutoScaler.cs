@@ -156,6 +156,8 @@ public class AutoScaler(
                                                     sys.databases d ON d.database_id = dso.database_id
                                                 WHERE
                                                     dso.elastic_pool_name IN ({elasticPoolNames})
+                                                AND
+                                                    d.status = 0 -- ONLINE
                                             )
                                             SELECT
                                                 DatabaseName,
