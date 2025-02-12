@@ -674,10 +674,12 @@ public class AutoScaler(
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
         {
-            SentrySdk.CaptureException(ex, scope =>
+            SentrySdk.ConfigureScope(scope =>
             {
                 scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
             });
+            SentrySdk.CaptureException(ex);
+            SentrySdk.CaptureMessage(message, SentryLevel.Error);
         }
     }
 
@@ -687,10 +689,11 @@ public class AutoScaler(
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
         {
-            SentrySdk.CaptureMessage(message, scope =>
+            SentrySdk.ConfigureScope(scope =>
             {
                 scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-            }, SentryLevel.Error);
+            });
+            SentrySdk.CaptureMessage(message, SentryLevel.Error);
         }
     }
 
