@@ -90,6 +90,8 @@ If you choose to log to this table, the managed identity will need INSERT permis
 
 The managed identity must have the necessary permission to invoke scaling operations on your elastic pools. To scale an elastic pool, Azure RBAC permissions are needed, specifically the Contributor, SQL DB Contributor role, or SQL Server Contributor Azure RBAC roles. For more information, see [Azure RBAC built-in roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles).
 
+If using a user assigned managed identity, it's important to create an app setting called `AZURE_CLIENT_ID` and set it to the Client ID of the managed identity you want to use for the function. Since a function app can have more than one managed identity assigned to it, this tells the SDK which identity to use by default.
+
 ## Deployment Guidance
 
 ### Azure SQL
