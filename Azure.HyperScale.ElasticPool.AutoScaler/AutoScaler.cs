@@ -681,19 +681,18 @@ public class AutoScaler(
             SentrySdk.CaptureMessage(message, SentryLevel.Error);
     }
 
-    // Create a SQL connection with managed identity if the connection string contains the keyword
     private static SqlConnection CreateSqlConnection(string connectionString)
     {
-        if (connectionString.Contains("Active Directory Managed Identity") && IsUsingManagedIdentity)
+        var sqlConnection = new SqlConnection(connectionString);
+
+        if (IsUsingManagedIdentity)
         {
-            var sqlConnection = new SqlConnection(connectionString);
             sqlConnection.AccessToken = new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
                 ManagedIdentityClientId = AzureClientId
             }).GetToken(new TokenRequestContext(new[] { "https://database.windows.net/.default" })).Token;
-            return sqlConnection;
         }
-        return new SqlConnection(connectionString);
+        return sqlConnection;
     }
 
     // Check permissions to access SQL server and elastic pools
