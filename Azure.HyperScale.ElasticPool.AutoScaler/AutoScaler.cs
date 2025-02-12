@@ -157,7 +157,7 @@ public class AutoScaler(
                                                 WHERE
                                                     dso.elastic_pool_name IN ({elasticPoolNames})
                                                 AND
-                                                    d.status = 0 -- ONLINE
+                                                    d.state = 0 -- ONLINE
                                             )
                                             SELECT
                                                 DatabaseName,
