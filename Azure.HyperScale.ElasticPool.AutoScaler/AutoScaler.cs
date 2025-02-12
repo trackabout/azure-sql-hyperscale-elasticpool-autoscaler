@@ -31,7 +31,6 @@ public class AutoScaler(
     AutoScalerConfiguration autoScalerConfig)
 {
     private const string HyperScaleTier = "Hyperscale";
-    private const string SentryTagSqlInstanceName = "SqlInstanceName";
 
     public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
 
@@ -156,6 +155,10 @@ public class AutoScaler(
                                                     sys.databases d ON d.database_id = dso.database_id
                                                 WHERE
                                                     dso.elastic_pool_name IN ({elasticPoolNames})
+                                                AND
+                                                    -- Ignore newly-created databases because they might
+                                                    -- not be queryable yet.
+                                                    d.create_date < DATEADD(HOUR, -2, GETUTCDATE())
                                             )
                                             SELECT
                                                 DatabaseName,
@@ -671,12 +674,7 @@ public class AutoScaler(
         logger.LogError(ex, message);
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
-        {
-            SentrySdk.CaptureException(ex, scope =>
-            {
-                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-            });
-        }
+            SentrySdk.CaptureException(ex);
     }
 
     private void RecordError(string message)
@@ -684,12 +682,7 @@ public class AutoScaler(
         logger.LogError(message);
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
-        {
-            SentrySdk.CaptureMessage(message, scope =>
-            {
-                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-            }, SentryLevel.Error);
-        }
+            SentrySdk.CaptureMessage(message, SentryLevel.Error);
     }
 
     private static SqlConnection CreateSqlConnection(string connectionString)
