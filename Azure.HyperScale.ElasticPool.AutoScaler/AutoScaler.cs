@@ -156,9 +156,8 @@ public class AutoScaler(
                                                 WHERE
                                                     dso.elastic_pool_name IN ({elasticPoolNames})
                                                 AND
-                                                    -- Ignore newly-created databases because they might
-                                                    -- not be queryable yet.
-                                                    d.create_date < DATEADD(HOUR, -2, GETUTCDATE())
+                                                    -- Make sure the database is ONLINE
+                                                    d.state = 0
                                             )
                                             SELECT
                                                 DatabaseName,
