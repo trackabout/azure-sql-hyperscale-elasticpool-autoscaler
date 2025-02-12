@@ -31,6 +31,7 @@ public class AutoScaler(
     AutoScalerConfiguration autoScalerConfig)
 {
     private const string HyperScaleTier = "Hyperscale";
+    private const string SentryTagSqlInstanceName = "SqlInstanceName";
 
     public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
 
@@ -670,7 +671,12 @@ public class AutoScaler(
         logger.LogError(ex, message);
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
-            SentrySdk.CaptureException(ex);
+        {
+            SentrySdk.CaptureException(ex, scope =>
+            {
+                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
+            });
+        }
     }
 
     private void RecordError(string message)
@@ -678,7 +684,12 @@ public class AutoScaler(
         logger.LogError(message);
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
-            SentrySdk.CaptureMessage(message, SentryLevel.Error);
+        {
+            SentrySdk.CaptureMessage(message, scope =>
+            {
+                scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
+            }, SentryLevel.Error);
+        }
     }
 
     private static SqlConnection CreateSqlConnection(string connectionString)
