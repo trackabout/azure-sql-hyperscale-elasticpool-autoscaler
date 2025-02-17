@@ -25,6 +25,8 @@ public class AutoScalerConfiguration
     public List<double> VCoreOptions { get; }
     public List<double> PerDatabaseMaximums { get; }
     public bool IsSentryLoggingEnabled { get; }
+    public double HighDataIoPercent { get; set; }
+    public double LowDataIoPercent { get; set; }
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -55,6 +57,9 @@ public class AutoScalerConfiguration
         VCoreOptions = ParseVCoreList(configuration.GetValue<string>("VCoreOptions") ?? throw new InvalidOperationException("VCoreOptions is not set."));
         PerDatabaseMaximums = ParseVCoreList(configuration.GetValue<string>("PerDatabaseMaximums") ?? throw new InvalidOperationException("PerDatabaseMaximums is not set."));
 
+        HighDataIoPercent = configuration.GetValue<double>("HighDataIoPercent");
+        LowDataIoPercent = configuration.GetValue<double>("LowDataIoPercent");
+
         // There must be the same number of VCoreOptions as PerDatabaseMaximums
         if (VCoreOptions.Count != PerDatabaseMaximums.Count)
         {
@@ -80,13 +85,13 @@ public class AutoScalerConfiguration
         }
 
         // The various Low/High thresholds must make sense.
-        if (LowCpuPercent >= HighCpuPercent || LowWorkersPercent >= HighWorkersPercent || LowInstanceCpuPercent >= HighInstanceCpuPercent)
+        if (LowCpuPercent >= HighCpuPercent || LowWorkersPercent >= HighWorkersPercent || LowInstanceCpuPercent >= HighInstanceCpuPercent || LowDataIoPercent >= HighDataIoPercent)
         {
             throw new InvalidOperationException("Low thresholds must be less than high thresholds.");
         }
 
         // None of the numeric values should ever be negative.
-        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowCountThreshold < 0 || HighCountThreshold < 0 || LookBackSeconds < 0 || VCoreFloor < 0 || VCoreCeiling < 0)
+        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || LowCountThreshold < 0 || HighCountThreshold < 0 || LookBackSeconds < 0 || VCoreFloor < 0 || VCoreCeiling < 0)
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
@@ -110,6 +115,8 @@ public class AutoScalerConfiguration
                $"HighWorkersPercent: {HighWorkersPercent}\n" +
                $"LowInstanceCpuPercent: {LowInstanceCpuPercent}\n" +
                $"HighInstanceCpuPercent: {HighInstanceCpuPercent}\n" +
+               $"LowDataIoPercent: {LowDataIoPercent}\n" +
+               $"HighDataIoPercent: {HighDataIoPercent}\n" +
                $"LowCountThreshold: {LowCountThreshold}\n" +
                $"HighCountThreshold: {HighCountThreshold}\n" +
                $"LookBackSeconds: {LookBackSeconds}\n" +

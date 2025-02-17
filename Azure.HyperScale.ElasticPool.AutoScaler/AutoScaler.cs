@@ -206,7 +206,7 @@ public class AutoScaler(
                                  RETURN;
                              END
 
-                             -- Query CPU, worker, and instance CPU metrics with hysteresis scaling logic
+                             -- Query CPU, worker, instance CPU, and data IO metrics with hysteresis scaling logic
                              ;WITH PoolStats AS (
                                  SELECT
                                      instance_vcores,
@@ -214,6 +214,7 @@ public class AutoScaler(
                                      avg_cpu_percent,
                                      max_worker_percent,
                                      avg_instance_cpu_percent,
+                                     avg_data_io_percent,
                                      ROW_NUMBER() OVER (ORDER BY end_time DESC) AS RowNum
                                  FROM
                                      sys.dm_elastic_pool_resource_stats
@@ -279,6 +280,26 @@ public class AutoScaler(
                                      PoolStats
                                  WHERE
                                      avg_instance_cpu_percent <= {autoScalerConfig.LowInstanceCpuPercent}
+                             ),
+
+                             HighDataIoStreak AS (
+                                 SELECT
+                                     COUNT(*) AS HighDataIoCount,
+                                     MAX(end_time) AS LastHighDataIoTime
+                                 FROM
+                                     PoolStats
+                                 WHERE
+                                     avg_data_io_percent >= {autoScalerConfig.HighDataIoPercent}
+                             ),
+
+                             LowDataIoStreak AS (
+                                 SELECT
+                                     COUNT(*) AS LowDataIoCount,
+                                     MAX(end_time) AS LastLowDataIoTime
+                                 FROM
+                                     PoolStats
+                                 WHERE
+                                     avg_data_io_percent <= {autoScalerConfig.LowDataIoPercent}
                              )
 
                              SELECT
@@ -288,6 +309,7 @@ public class AutoScaler(
                                  ps.avg_cpu_percent as AvgCpuPercent,
                                  ps.max_worker_percent as WorkersPercent,
                                  ps.avg_instance_cpu_percent as AvgInstanceCpuPercent,
+                                 ps.avg_data_io_percent as AvgDataIoPercent,
                                  hcs.HighCpuCount,
                                  hcs.LastHighCpuTime,
                                  lcs.LowCpuCount,
@@ -299,7 +321,11 @@ public class AutoScaler(
                                  his.HighInstanceCpuCount,
                                  his.LastHighInstanceCpuTime,
                                  lis.LowInstanceCpuCount,
-                                 lis.LastLowInstanceCpuTime
+                                 lis.LastLowInstanceCpuTime,
+                                 hdis.HighDataIoCount,
+                                 hdis.LastHighDataIoTime,
+                                 ldis.LowDataIoCount,
+                                 ldis.LastLowDataIoTime
                              FROM
                                  PoolStats ps
                              CROSS JOIN
@@ -314,6 +340,10 @@ public class AutoScaler(
                                  HighInstanceCpuStreak his
                              CROSS JOIN
                                  LowInstanceCpuStreak lis
+                             CROSS JOIN
+                                 HighDataIoStreak hdis
+                             CROSS JOIN
+                                 LowDataIoStreak ldis
                              WHERE
                                  ps.RowNum = 1;  -- Get the latest entry
 
@@ -468,7 +498,8 @@ public class AutoScaler(
         // If any one of the high thresholds are met, scale up.
         if (pool.HighCpuCount >= autoScalerConfig.HighCountThreshold ||
             pool.HighWorkerCount >= autoScalerConfig.HighCountThreshold ||
-            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold)
+            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold ||
+            pool.HighDataIoCount >= autoScalerConfig.HighCountThreshold)
         {
             return ScalingActions.Up;
         }
@@ -476,7 +507,8 @@ public class AutoScaler(
         // If ALL of the low thresholds are met, scale down.
         if (pool.LowCpuCount >= autoScalerConfig.LowCountThreshold &&
             pool.LowWorkerCount >= autoScalerConfig.LowCountThreshold &&
-            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold)
+            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold &&
+            pool.LowDataIoCount >= autoScalerConfig.LowCountThreshold)
         {
             return ScalingActions.Down;
         }
@@ -527,6 +559,9 @@ public class AutoScaler(
         FunctionsLoggerExtensions.LogMetric(logger, "AvgInstanceCpuPercent", Convert.ToDouble(usageInfo.AvgInstanceCpuPercent));
         FunctionsLoggerExtensions.LogMetric(logger, "HighInstanceCpuCount", Convert.ToDouble(usageInfo.HighInstanceCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowInstanceCpuCount", Convert.ToDouble(usageInfo.LowInstanceCpuCount));
+        FunctionsLoggerExtensions.LogMetric(logger, "AvgDataIoPercent", Convert.ToDouble(usageInfo.AvgDataIoPercent));
+        FunctionsLoggerExtensions.LogMetric(logger, "HighDataIoCount", Convert.ToDouble(usageInfo.HighDataIoCount));
+        FunctionsLoggerExtensions.LogMetric(logger, "LowDataIoCount", Convert.ToDouble(usageInfo.LowDataIoCount));
 
         FunctionsLoggerExtensions.LogMetric(logger, "CurrentCpuLimit", currentVCore);
         FunctionsLoggerExtensions.LogMetric(logger, "TargetCpuLimit", targetVCore);

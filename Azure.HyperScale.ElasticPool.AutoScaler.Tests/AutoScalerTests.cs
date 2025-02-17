@@ -24,15 +24,17 @@ public class AutoScalerTests
             {"LowCpuPercent", "10"},
             {"LowWorkersPercent", "20"},
             {"LowInstanceCpuPercent", "15"},
+            {"LowDataIoPercent", "10"},
 
             {"HighCpuPercent", "80"},
             {"HighWorkersPercent", "90"},
             {"HighInstanceCpuPercent", "85"},
+            {"HighDataIoPercent", "80"},
 
             {"HighCountThreshold", "5"},
             {"LowCountThreshold", "5"},
             {"LookBackSeconds", "900"},
-    
+
             {"VCoreFloor", "6"},
             {"VCoreCeiling", "24"},
             {"VCoreOptions", "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128"},
@@ -47,7 +49,7 @@ public class AutoScalerTests
         Mock<ILogger<AutoScaler>> loggerMock = new();
         _autoScaler = new AutoScaler(loggerMock.Object, _config);
     }
-    
+
     [Fact]
     public void ScaleUp_AtHighCpuCountThreshold()
     {
@@ -101,7 +103,7 @@ public class AutoScalerTests
     {
         var usageInfo = new UsageInfo
         {
-            HighCpuCount = 20 
+            HighCpuCount = 20
         };
         const int currentCpu = 4;
 
@@ -151,7 +153,8 @@ public class AutoScalerTests
         {
             HighCpuCount = 20,
             HighWorkerCount = 20,
-            HighInstanceCpuCount = 20
+            HighInstanceCpuCount = 20,
+            HighDataIoCount = 20
         };
         const int currentCpu = 12;
 
@@ -169,7 +172,8 @@ public class AutoScalerTests
         {
             LowCpuCount = 0,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 35
+            LowInstanceCpuCount = 35,
+            LowDataIoCount = 0
         };
         const int currentCpu = 10;
 
@@ -187,7 +191,8 @@ public class AutoScalerTests
         {
             LowCpuCount = 0,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            LowInstanceCpuCount = 5,
+            LowDataIoCount = 0
         };
         const int currentCpu = 10;
 
@@ -203,9 +208,10 @@ public class AutoScalerTests
     {
         var usageInfo = new UsageInfo
         {
-            LowCpuCount = 5,  
+            LowCpuCount = 5,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            LowInstanceCpuCount = 5,
+            LowDataIoCount = 5
         };
         const int currentCpu = 10;
 
@@ -357,5 +363,37 @@ public class AutoScalerTests
         Assert.Equal(20, result.VCore);
         Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
         Assert.Equal(14, result.PerDbMaxCapacity);
+    }
+
+    [Fact]
+    public void ScaleUp_AtHighDataIoCountThreshold()
+    {
+        var usageInfo = new UsageInfo
+        {
+            HighDataIoCount = 5
+        };
+        const int currentCpu = 4;
+
+        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+        Assert.Equal(6, result.VCore);
+        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(4, result.PerDbMaxCapacity);
+    }
+
+    [Fact]
+    public void ScaleUp_OverHighDataIoCountThreshold()
+    {
+        var usageInfo = new UsageInfo
+        {
+            HighDataIoCount = 20
+        };
+        const int currentCpu = 4;
+
+        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+        Assert.Equal(6, result.VCore);
+        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(4, result.PerDbMaxCapacity);
     }
 }
