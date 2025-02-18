@@ -498,7 +498,8 @@ public class AutoScaler(
         // If any one of the high thresholds are met, scale up.
         if (pool.HighCpuCount >= autoScalerConfig.HighCountThreshold ||
             pool.HighWorkerCount >= autoScalerConfig.HighCountThreshold ||
-            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold)
+            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold ||
+            pool.HighDataIoCount >= autoScalerConfig.HighCountThreshold)
         {
             return ScalingActions.Up;
         }
@@ -506,7 +507,8 @@ public class AutoScaler(
         // If ALL of the low thresholds are met, scale down.
         if (pool.LowCpuCount >= autoScalerConfig.LowCountThreshold &&
             pool.LowWorkerCount >= autoScalerConfig.LowCountThreshold &&
-            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold)
+            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold &&
+            pool.LowDataIoCount >= autoScalerConfig.LowCountThreshold)
         {
             return ScalingActions.Down;
         }
@@ -557,6 +559,9 @@ public class AutoScaler(
         FunctionsLoggerExtensions.LogMetric(logger, "AvgInstanceCpuPercent", Convert.ToDouble(usageInfo.AvgInstanceCpuPercent));
         FunctionsLoggerExtensions.LogMetric(logger, "HighInstanceCpuCount", Convert.ToDouble(usageInfo.HighInstanceCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowInstanceCpuCount", Convert.ToDouble(usageInfo.LowInstanceCpuCount));
+        FunctionsLoggerExtensions.LogMetric(logger, "AvgDataIoPercent", Convert.ToDouble(usageInfo.AvgDataIoPercent));
+        FunctionsLoggerExtensions.LogMetric(logger, "HighDataIoCount", Convert.ToDouble(usageInfo.HighDataIoCount));
+        FunctionsLoggerExtensions.LogMetric(logger, "LowDataIoCount", Convert.ToDouble(usageInfo.LowDataIoCount));
 
         FunctionsLoggerExtensions.LogMetric(logger, "CurrentCpuLimit", currentVCore);
         FunctionsLoggerExtensions.LogMetric(logger, "TargetCpuLimit", targetVCore);
