@@ -38,7 +38,9 @@ public class AutoScalerTests
             {"VCoreFloor", "6"},
             {"VCoreCeiling", "24"},
             {"VCoreOptions", "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128"},
-            {"PerDatabaseMaximums",  "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"}
+            {"PerDatabaseMaximums",  "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"},
+
+            {"IsSentryLoggingEnabled", "false"}  // Sensible default
         };
 
         var configuration = new ConfigurationBuilder()
