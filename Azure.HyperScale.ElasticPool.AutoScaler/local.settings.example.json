@@ -25,9 +25,9 @@
     "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"
   },
   "ConnectionStrings": {
-    "PoolDbConnection": "...",
-    "MetricsSqlConnection": "...",
-    "MasterSqlConnection": "..."
+    "PoolDbConnection": "Server=tcp:sql_server_host;Database={DatabaseName};auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
+    "MetricsSqlConnection": "Server=tcp:sql_server_host;Database=metrics_db;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
+    "MasterSqlConnection": "Server=tcp:sql_server_host;Database=master;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;"
   },
   "Host": {
     "CORS": "*"
