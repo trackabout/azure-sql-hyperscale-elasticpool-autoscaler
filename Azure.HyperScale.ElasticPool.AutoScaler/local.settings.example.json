@@ -14,6 +14,8 @@
     "HighWorkersPercent": "50",
     "LowInstanceCpuPercent": "20",
     "HighInstanceCpuPercent": "70",
+    "LowDataIoPercent": "20",
+    "HighDataIoPercent": "70",
     "HighCountThreshold": "5",
     "LowCountThreshold": "15",
     "LookBackSeconds": "900",
