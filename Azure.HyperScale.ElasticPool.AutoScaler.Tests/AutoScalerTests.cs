@@ -284,7 +284,8 @@ public class AutoScalerTests
         {
             LowCpuCount = 10,
             LowWorkerCount = 10,
-            LowInstanceCpuCount = 10
+            LowInstanceCpuCount = 10,
+            LowDataIoCount = 10
         };
         const int currentCpu = 8;
 
@@ -320,7 +321,8 @@ public class AutoScalerTests
         {
             LowCpuCount = 5,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            LowInstanceCpuCount = 5,
+            LowDataIoCount = 5
         };
         const int currentCpu = 4; // Below configured floor
 
@@ -338,7 +340,8 @@ public class AutoScalerTests
         {
             LowCpuCount = 5,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            LowInstanceCpuCount = 5,
+            LowDataIoCount = 5
         };
         const int currentCpu = 128; // Well above configured ceiling
 
@@ -356,7 +359,9 @@ public class AutoScalerTests
         {
             LowCpuCount = 5,
             LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            LowInstanceCpuCount = 5,
+            LowDataIoCount = 5
+
         };
         var currentCpu = _config.VCoreCeiling;
 

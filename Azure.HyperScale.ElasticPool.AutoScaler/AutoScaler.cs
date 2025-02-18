@@ -166,8 +166,6 @@ public class AutoScaler(
                                                 PoolDatabases
                                             WHERE
                                                 rn = 1;
-
-
                                             """;
         try
         {
@@ -225,7 +223,7 @@ public class AutoScaler(
                              HighCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS HighCpuCount,
-                                     MAX(end_time) AS LastHighCpuTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -235,7 +233,7 @@ public class AutoScaler(
                              LowCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS LowCpuCount,
-                                     MAX(end_time) AS LastLowCpuTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -245,7 +243,7 @@ public class AutoScaler(
                              HighWorkerStreak AS (
                                  SELECT
                                      COUNT(*) AS HighWorkerCount,
-                                     MAX(end_time) AS LastHighWorkerTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighWorkerTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -255,7 +253,7 @@ public class AutoScaler(
                              LowWorkerStreak AS (
                                  SELECT
                                      COUNT(*) AS LowWorkerCount,
-                                     MAX(end_time) AS LastLowWorkerTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowWorkerTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -265,7 +263,7 @@ public class AutoScaler(
                              HighInstanceCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS HighInstanceCpuCount,
-                                     MAX(end_time) AS LastHighInstanceCpuTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighInstanceCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -275,7 +273,7 @@ public class AutoScaler(
                              LowInstanceCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS LowInstanceCpuCount,
-                                     MAX(end_time) AS LastLowInstanceCpuTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowInstanceCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -285,7 +283,7 @@ public class AutoScaler(
                              HighDataIoStreak AS (
                                  SELECT
                                      COUNT(*) AS HighDataIoCount,
-                                     MAX(end_time) AS LastHighDataIoTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighDataIoTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -295,7 +293,7 @@ public class AutoScaler(
                              LowDataIoStreak AS (
                                  SELECT
                                      COUNT(*) AS LowDataIoCount,
-                                     MAX(end_time) AS LastLowDataIoTime
+                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowDataIoTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -305,27 +303,27 @@ public class AutoScaler(
                              SELECT
                                  @ElasticPoolName AS ElasticPoolName,
                                  ps.instance_vcores as ElasticPoolCpuLimit,
-                                 ps.end_time as TimeStamp,
+                                 ISNULL(ps.end_time, '1900-01-01') as TimeStamp,
                                  ps.avg_cpu_percent as AvgCpuPercent,
                                  ps.max_worker_percent as WorkersPercent,
                                  ps.avg_instance_cpu_percent as AvgInstanceCpuPercent,
                                  ps.avg_data_io_percent as AvgDataIoPercent,
                                  hcs.HighCpuCount,
-                                 hcs.LastHighCpuTime,
+                                 ISNULL(hcs.LastHighCpuTime, '1900-01-01') as LastHighCpuTime,
                                  lcs.LowCpuCount,
-                                 lcs.LastLowCpuTime,
+                                 ISNULL(lcs.LastLowCpuTime, '1900-01-01') as LastLowCpuTime,
                                  hws.HighWorkerCount,
-                                 hws.LastHighWorkerTime,
+                                 ISNULL(hws.LastHighWorkerTime, '1900-01-01') as LastHighWorkerTime,
                                  lws.LowWorkerCount,
-                                 lws.LastLowWorkerTime,
+                                 ISNULL(lws.LastLowWorkerTime, '1900-01-01') as LastLowWorkerTime,
                                  his.HighInstanceCpuCount,
-                                 his.LastHighInstanceCpuTime,
+                                 ISNULL(his.LastHighInstanceCpuTime, '1900-01-01') as LastHighInstanceCpuTime,
                                  lis.LowInstanceCpuCount,
-                                 lis.LastLowInstanceCpuTime,
+                                 ISNULL(lis.LastLowInstanceCpuTime, '1900-01-01') as LastLowInstanceCpuTime,
                                  hdis.HighDataIoCount,
-                                 hdis.LastHighDataIoTime,
+                                 ISNULL(hdis.LastHighDataIoTime, '1900-01-01') as LastHighDataIoTime,
                                  ldis.LowDataIoCount,
-                                 ldis.LastLowDataIoTime
+                                 ISNULL(ldis.LastLowDataIoTime, '1900-01-01') as LastLowDataIoTime
                              FROM
                                  PoolStats ps
                              CROSS JOIN
