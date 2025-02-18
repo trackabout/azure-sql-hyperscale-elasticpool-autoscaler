@@ -166,6 +166,8 @@ public class AutoScaler(
                                                 PoolDatabases
                                             WHERE
                                                 rn = 1;
+
+
                                             """;
         try
         {
@@ -204,7 +206,7 @@ public class AutoScaler(
                                  RETURN;
                              END
 
-                             -- Query CPU, worker, instance CPU, and data IO metrics with hysteresis scaling logic
+                             -- Query CPU, worker, and instance CPU metrics with hysteresis scaling logic
                              ;WITH PoolStats AS (
                                  SELECT
                                      instance_vcores,
@@ -212,7 +214,6 @@ public class AutoScaler(
                                      avg_cpu_percent,
                                      max_worker_percent,
                                      avg_instance_cpu_percent,
-                                     avg_data_io_percent,
                                      ROW_NUMBER() OVER (ORDER BY end_time DESC) AS RowNum
                                  FROM
                                      sys.dm_elastic_pool_resource_stats
@@ -223,7 +224,7 @@ public class AutoScaler(
                              HighCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS HighCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighCpuTime
+                                     MAX(end_time) AS LastHighCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -233,7 +234,7 @@ public class AutoScaler(
                              LowCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS LowCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowCpuTime
+                                     MAX(end_time) AS LastLowCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -243,7 +244,7 @@ public class AutoScaler(
                              HighWorkerStreak AS (
                                  SELECT
                                      COUNT(*) AS HighWorkerCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighWorkerTime
+                                     MAX(end_time) AS LastHighWorkerTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -253,7 +254,7 @@ public class AutoScaler(
                              LowWorkerStreak AS (
                                  SELECT
                                      COUNT(*) AS LowWorkerCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowWorkerTime
+                                     MAX(end_time) AS LastLowWorkerTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -263,7 +264,7 @@ public class AutoScaler(
                              HighInstanceCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS HighInstanceCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighInstanceCpuTime
+                                     MAX(end_time) AS LastHighInstanceCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
@@ -273,57 +274,32 @@ public class AutoScaler(
                              LowInstanceCpuStreak AS (
                                  SELECT
                                      COUNT(*) AS LowInstanceCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowInstanceCpuTime
+                                     MAX(end_time) AS LastLowInstanceCpuTime
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_instance_cpu_percent <= {autoScalerConfig.LowInstanceCpuPercent}
-                             ),
-
-                             HighDataIoStreak AS (
-                                 SELECT
-                                     COUNT(*) AS HighDataIoCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighDataIoTime
-                                 FROM
-                                     PoolStats
-                                 WHERE
-                                     avg_data_io_percent >= {autoScalerConfig.HighDataIoPercent}
-                             ),
-
-                             LowDataIoStreak AS (
-                                 SELECT
-                                     COUNT(*) AS LowDataIoCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowDataIoTime
-                                 FROM
-                                     PoolStats
-                                 WHERE
-                                     avg_data_io_percent <= {autoScalerConfig.LowDataIoPercent}
                              )
 
                              SELECT
                                  @ElasticPoolName AS ElasticPoolName,
                                  ps.instance_vcores as ElasticPoolCpuLimit,
-                                 ISNULL(ps.end_time, '1900-01-01') as TimeStamp,
+                                 ps.end_time as TimeStamp,
                                  ps.avg_cpu_percent as AvgCpuPercent,
                                  ps.max_worker_percent as WorkersPercent,
                                  ps.avg_instance_cpu_percent as AvgInstanceCpuPercent,
-                                 ps.avg_data_io_percent as AvgDataIoPercent,
                                  hcs.HighCpuCount,
-                                 ISNULL(hcs.LastHighCpuTime, '1900-01-01') as LastHighCpuTime,
+                                 hcs.LastHighCpuTime,
                                  lcs.LowCpuCount,
-                                 ISNULL(lcs.LastLowCpuTime, '1900-01-01') as LastLowCpuTime,
+                                 lcs.LastLowCpuTime,
                                  hws.HighWorkerCount,
-                                 ISNULL(hws.LastHighWorkerTime, '1900-01-01') as LastHighWorkerTime,
+                                 hws.LastHighWorkerTime,
                                  lws.LowWorkerCount,
-                                 ISNULL(lws.LastLowWorkerTime, '1900-01-01') as LastLowWorkerTime,
+                                 lws.LastLowWorkerTime,
                                  his.HighInstanceCpuCount,
-                                 ISNULL(his.LastHighInstanceCpuTime, '1900-01-01') as LastHighInstanceCpuTime,
+                                 his.LastHighInstanceCpuTime,
                                  lis.LowInstanceCpuCount,
-                                 ISNULL(lis.LastLowInstanceCpuTime, '1900-01-01') as LastLowInstanceCpuTime,
-                                 hdis.HighDataIoCount,
-                                 ISNULL(hdis.LastHighDataIoTime, '1900-01-01') as LastHighDataIoTime,
-                                 ldis.LowDataIoCount,
-                                 ISNULL(ldis.LastLowDataIoTime, '1900-01-01') as LastLowDataIoTime
+                                 lis.LastLowInstanceCpuTime
                              FROM
                                  PoolStats ps
                              CROSS JOIN
@@ -338,10 +314,6 @@ public class AutoScaler(
                                  HighInstanceCpuStreak his
                              CROSS JOIN
                                  LowInstanceCpuStreak lis
-                             CROSS JOIN
-                                 HighDataIoStreak hdis
-                             CROSS JOIN
-                                 LowDataIoStreak ldis
                              WHERE
                                  ps.RowNum = 1;  -- Get the latest entry
 
@@ -496,8 +468,7 @@ public class AutoScaler(
         // If any one of the high thresholds are met, scale up.
         if (pool.HighCpuCount >= autoScalerConfig.HighCountThreshold ||
             pool.HighWorkerCount >= autoScalerConfig.HighCountThreshold ||
-            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold ||
-            pool.HighDataIoCount >= autoScalerConfig.HighCountThreshold)
+            pool.HighInstanceCpuCount >= autoScalerConfig.HighCountThreshold)
         {
             return ScalingActions.Up;
         }
@@ -505,8 +476,7 @@ public class AutoScaler(
         // If ALL of the low thresholds are met, scale down.
         if (pool.LowCpuCount >= autoScalerConfig.LowCountThreshold &&
             pool.LowWorkerCount >= autoScalerConfig.LowCountThreshold &&
-            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold &&
-            pool.LowDataIoCount >= autoScalerConfig.LowCountThreshold)
+            pool.LowInstanceCpuCount >= autoScalerConfig.LowCountThreshold)
         {
             return ScalingActions.Down;
         }
@@ -557,9 +527,6 @@ public class AutoScaler(
         FunctionsLoggerExtensions.LogMetric(logger, "AvgInstanceCpuPercent", Convert.ToDouble(usageInfo.AvgInstanceCpuPercent));
         FunctionsLoggerExtensions.LogMetric(logger, "HighInstanceCpuCount", Convert.ToDouble(usageInfo.HighInstanceCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowInstanceCpuCount", Convert.ToDouble(usageInfo.LowInstanceCpuCount));
-        FunctionsLoggerExtensions.LogMetric(logger, "AvgDataIoPercent", Convert.ToDouble(usageInfo.AvgDataIoPercent));
-        FunctionsLoggerExtensions.LogMetric(logger, "HighDataIoCount", Convert.ToDouble(usageInfo.HighDataIoCount));
-        FunctionsLoggerExtensions.LogMetric(logger, "LowDataIoCount", Convert.ToDouble(usageInfo.LowDataIoCount));
 
         FunctionsLoggerExtensions.LogMetric(logger, "CurrentCpuLimit", currentVCore);
         FunctionsLoggerExtensions.LogMetric(logger, "TargetCpuLimit", targetVCore);
@@ -707,12 +674,10 @@ public class AutoScaler(
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
         {
-            SentrySdk.ConfigureScope(scope =>
+            SentrySdk.CaptureException(ex, scope =>
             {
                 scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
             });
-            SentrySdk.CaptureException(ex);
-            SentrySdk.CaptureMessage(message, SentryLevel.Error);
         }
     }
 
@@ -722,11 +687,10 @@ public class AutoScaler(
 
         if (autoScalerConfig.IsSentryLoggingEnabled)
         {
-            SentrySdk.ConfigureScope(scope =>
+            SentrySdk.CaptureMessage(message, scope =>
             {
                 scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-            });
-            SentrySdk.CaptureMessage(message, SentryLevel.Error);
+            }, SentryLevel.Error);
         }
     }
 
