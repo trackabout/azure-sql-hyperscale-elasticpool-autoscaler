@@ -131,7 +131,7 @@ public class AutoScaler(
     private async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
         // Create a SQL compatible list of Elastic Pool Names
-        var elasticPoolNames = string.Join("', '", poolsToConsider.Select(name => $"'{name}'"));
+        var elasticPoolNames = string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
 
         // There is a view in the master database, sys.elastic_pool_resource_stats, which provides
         // metrics for all elastic pools on a given server, but its metrics are significantly delayed.
