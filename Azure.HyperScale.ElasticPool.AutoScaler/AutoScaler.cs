@@ -13,12 +13,6 @@ using Polly.Retry;
 
 namespace Azure.HyperScale.ElasticPool.AutoScaler;
 
-public enum SearchDirection
-{
-    Higher,
-    Lower
-}
-
 public enum ScalingActions
 {
     Up,
@@ -130,21 +124,10 @@ public class AutoScaler(
 
     private async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
-        // Create a SQL compatible list of Elastic Pool Names
-        var elasticPoolNames = string.Join("', '", poolsToConsider.Select(name => $"'{name}'"));
-
-        // There is a view in the master database, sys.elastic_pool_resource_stats, which provides
-        // metrics for all elastic pools on a given server, but its metrics are significantly delayed.
-        // We've seen delays over 5 minutes.
-
-        // The most timely source of metrics from which to base scaling decisions comes from
-        // the view sys.dm_elastic_pool_resource_stats.
-
-        // In order to make use of the most timely source, sys.dm_elastic_pool_resource_stats, we'll
-        // need to pick a database in each pool of interest to query. Which one doesn't matter.
+        // Create a single string of Elastic Pool Names separated by commas
+        var elasticPoolNames = string.Join(",", poolsToConsider.Select(name => $"'{name}'"));
 
         var findPoolDatabasesForMetrics = $"""
-
                                             WITH PoolDatabases AS (
                                                 SELECT
                                                     DatabaseName = d.name,
@@ -166,8 +149,6 @@ public class AutoScaler(
                                                 PoolDatabases
                                             WHERE
                                                 rn = 1;
-
-
                                             """;
         try
         {
@@ -381,11 +362,11 @@ public class AutoScaler(
         return metricsResults.SelectMany(m => m).ToList();
     }
 
-    private static AsyncRetryPolicy GetRetryPolicy()
+    private AsyncRetryPolicy GetRetryPolicy()
     {
         var retryPolicy = Policy
             .Handle<SqlException>(ex => ex.IsTransient)
-            .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
+            .WaitAndRetryAsync(autoScalerConfig.RetryCount, retryAttempt => TimeSpan.FromSeconds(Math.Pow(autoScalerConfig.RetryInterval, retryAttempt)));
         return retryPolicy;
     }
 

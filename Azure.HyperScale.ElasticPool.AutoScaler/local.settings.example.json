@@ -22,7 +22,9 @@
     "VCoreFloor": "4",
     "VCoreCeiling": "16",
     "VCoreOptions": "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128",
-    "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"
+    "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80",
+    "RetryCount": "3",
+    "RetryInterval": "5",
   },
   "ConnectionStrings": {
     "PoolDbConnection": "Server=tcp:sql_server_host;Database={DatabaseName};auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
