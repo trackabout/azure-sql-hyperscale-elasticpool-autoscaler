@@ -25,8 +25,8 @@ public class AutoScalerConfiguration
     public List<double> VCoreOptions { get; }
     public List<double> PerDatabaseMaximums { get; }
     public bool IsSentryLoggingEnabled { get; }
-    public double HighDataIoPercent { get; set; }
-    public double LowDataIoPercent { get; set; }
+    public decimal HighDataIoPercent { get; set; }
+    public decimal LowDataIoPercent { get; set; }
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -57,8 +57,8 @@ public class AutoScalerConfiguration
         VCoreOptions = ParseVCoreList(configuration.GetValue<string>("VCoreOptions") ?? throw new InvalidOperationException("VCoreOptions is not set."));
         PerDatabaseMaximums = ParseVCoreList(configuration.GetValue<string>("PerDatabaseMaximums") ?? throw new InvalidOperationException("PerDatabaseMaximums is not set."));
 
-        HighDataIoPercent = configuration.GetValue<double>("HighDataIoPercent");
-        LowDataIoPercent = configuration.GetValue<double>("LowDataIoPercent");
+        HighDataIoPercent = configuration.GetValue<decimal>("HighDataIoPercent");
+        LowDataIoPercent = configuration.GetValue<decimal>("LowDataIoPercent");
 
         // There must be the same number of VCoreOptions as PerDatabaseMaximums
         if (VCoreOptions.Count != PerDatabaseMaximums.Count)
