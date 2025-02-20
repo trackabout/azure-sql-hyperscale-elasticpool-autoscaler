@@ -145,6 +145,7 @@ Deploy the solution to Azure and set up the application settings using the conte
 - **RetryInterval**: When making a SQL connection, the time between retries.
 - **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false.
 - **SentryDsn**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true.
+- **IsDryRun**: Will not scale, only logs what it would do.
 
 ## Hysteresis Configuration
 
