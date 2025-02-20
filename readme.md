@@ -10,7 +10,7 @@ Unfortunately, there aren't built-in features to scale pools up and down based o
 
 Until now.
 
-In this repo, we offer our implementation of an automatic scaler,AutoScaler, for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
+In this repo, we offer our implementation of an automatic scaler, AutoScaler, for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
 
 A single instance of AutoScaler can manage *multiple* elastic pools within a single Azure SQL Server.
 
@@ -18,13 +18,14 @@ To manage multiple Azure SQL Servers, you can run multiple instances of the Auto
 
 Scaling decisions are made based on looking back at historical elastic pool metrics provided by the `sys.dm_elastic_pool_resource_stats` view within a database inside a Hyperscale pool.
 
-We look at three key metrics:
+We look at four key metrics:
 
 - Average CPU Percentage
 - Average Instance CPU Percentage
 - Worker Percentage
+- Data IO Percentage
 
-In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the three most important CPU-related metrics to monitor for scaling operations within an elastic pool.
+In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the four most important CPU-related metrics to monitor for scaling operations within an elastic pool.
 
 Through configuration, you can control:
 
@@ -56,7 +57,11 @@ The original project was intended for use with standalone Hyperscale SQL databas
 
 ## Identities and Permissions
 
-Database connections are made using Managed Identity trust. You must create either a system-managed identity or a user-assigned managed identity for your Azure Function, and use that identity to grant the necessary permissions within your Azure SQL Server and database environment.
+Managed Identities for SQL connections is supported. You must first enable the system-managed identity for your Azure Function regardless of whether you are using a user-assigned MI. Otherwise, we have found the user-assigned MI will not work. Be sure to set the `AZURE_CLIENT_ID` environment variable equal to the chosen identity's ObjectId.
+
+In order for the managed identity to be able to query the necessary tables in the `master` database, it must be set as an Admin in the Azure SQL Server's settings. You may create an AAD group and place this (and other) identities into this group.
+
+Of course, basic SQL User (username/password style) connection strings also work.
 
 ### Permissions in the `master` database
 
@@ -131,10 +136,13 @@ Deploy the solution to Azure and set up the application settings using the conte
 - **LowCpuPercent**, **HighCpuPercent**: Average CPU Percent low and high thresholds.
 - **LowWorkersPercent**, **HighWorkersPercent**: Workers Percent low and high thresholds.
 - **LowInstanceCpuPercent**, **HighInstanceCpuPercent**: SQL Instance CPU Percent low and high thresholds.
+- **LowDataIoPercent**, **HighDataIoPercent**: Data IO Percent low and high thresholds.
 - **LookBackSeconds**, **LowCountThreshold**, **HighCountThreshold**: Hysteresis-controlling settings. More on these below.
 - **VCoreFloor**, **VCoreCeiling**: The minimum and maximum number of cores to use as bounds for scaling up and down. You'll probably always set VCoreFloor to the minimum vCore setting possible. You may wish to set a hard ceiling to control costs.
 - **VCoreOptions**: The list of available vCore options for the type of Hyperscale Elastic Pool being used. Copied from Azure documentation.
 - **PerDatabaseMaximums**: Controls the per-database maximum vCore setting for the pool at each step. Should map 1:1 with VCoreOptions.
+- **RetryCount**: When making a SQL connection, the number of retries.
+- **RetryInterval**: When making a SQL connection, the time between retries.
 - **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false.
 - **SentryDsn**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true.
 
@@ -190,7 +198,7 @@ This approach allows for stable and responsive scaling while preventing frequent
 
 You may find value in reading our unit tests to understand how the AutoScaler will choose to scale (up, down or hold) given various inputs.
 
-## Load Testing
+## CPU Load Testing
 
 To load test the autoscaler, first create the `Numbers` test table within each test database in the pool.
 

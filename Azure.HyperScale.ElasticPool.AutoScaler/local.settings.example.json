@@ -14,18 +14,22 @@
     "HighWorkersPercent": "50",
     "LowInstanceCpuPercent": "20",
     "HighInstanceCpuPercent": "70",
+    "LowDataIoPercent": "20",
+    "HighDataIoPercent": "70",
     "HighCountThreshold": "5",
     "LowCountThreshold": "15",
     "LookBackSeconds": "900",
     "VCoreFloor": "4",
     "VCoreCeiling": "16",
     "VCoreOptions": "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128",
-    "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"
+    "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80",
+    "RetryCount": "3",
+    "RetryInterval": "5",
   },
   "ConnectionStrings": {
-    "PoolDbConnection": "...",
-    "MetricsSqlConnection": "...",
-    "MasterSqlConnection": "..."
+    "PoolDbConnection": "Server=tcp:sql_server_host;Database={DatabaseName};auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
+    "MetricsSqlConnection": "Server=tcp:sql_server_host;Database=metrics_db;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
+    "MasterSqlConnection": "Server=tcp:sql_server_host;Database=master;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;"
   },
   "Host": {
     "CORS": "*"

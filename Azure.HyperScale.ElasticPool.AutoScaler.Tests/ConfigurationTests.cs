@@ -23,6 +23,8 @@ public class ConfigurationTests
             {"HighInstanceCpuPercent", "70"},
             {"LowCountThreshold", "5"},
             {"HighCountThreshold", "15"},
+            {"LowDataIoPercent", "20"},
+            {"HighDataIoPercent", "70"},
             {"LookBackSeconds", "900"},
             {"VCoreFloor", "4"},
             {"VCoreCeiling", "16"},
