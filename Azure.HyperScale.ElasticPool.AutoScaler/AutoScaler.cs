@@ -133,7 +133,7 @@ public class AutoScaler(
     {
         return string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
     }
-    public async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
+    private async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
         var elasticPoolNames = CreateSqlCompatibleList(poolsToConsider);
         // There is a view in the master database, sys.elastic_pool_resource_stats, which provides
@@ -634,7 +634,7 @@ public class AutoScaler(
     /// <param name="serverName">The SQL Server name.</param>
     /// <param name="elasticPoolName">The Elastic Pool name.</param>
     /// <param name="newPoolSettings">The new pool settings.</param>
-    public async Task ScaleElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName, PoolTargetSettings newPoolSettings)
+    private async Task ScaleElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName, PoolTargetSettings newPoolSettings)
     {
         try
         {
