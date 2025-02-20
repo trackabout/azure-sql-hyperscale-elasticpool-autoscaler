@@ -153,6 +153,7 @@ The Hyperscale elastic pool environment generally posts new performance metrics 
 ### 1. **LookBackSeconds**
 
 **Recommended Range**: 900–1800 seconds (15–30 minutes). Since metrics are generated every 15 seconds, this window will yield 60–120 data points in 15–30 minutes.
+**Maximum**: 2500. In our experience, there are only ever 128 metrics stored, and the range is somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
 
 **Rationale**: A 15- to 30-minute lookback window is usually sufficient to capture significant trends in usage without being overly reactive to short spikes or dips.
 
