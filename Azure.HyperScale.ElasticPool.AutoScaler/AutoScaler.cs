@@ -210,7 +210,7 @@ public class AutoScaler(
                                  FROM
                                      sys.dm_elastic_pool_resource_stats
                                  WHERE
-                                     end_time >= DATEADD(SECOND, -{autoScalerConfig.LookBackSeconds}, GETUTCDATE())  -- Retrieve data from the last 15 minutes
+                                     end_time >= DATEADD(SECOND, -{autoScalerConfig.LookBackSeconds}, GETUTCDATE())
                              ),
 
                              HighCpuStreak AS (
