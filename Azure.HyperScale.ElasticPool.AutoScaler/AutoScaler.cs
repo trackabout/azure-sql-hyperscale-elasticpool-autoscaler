@@ -107,9 +107,16 @@ public class AutoScaler(
             // We are going to scale!
             try
             {
-                logger.LogWarning($"{serverAndPool}: Scaling from {currentVCore} to {newPoolSettings.VCore}");
-                await ScaleElasticPoolAsync(autoScalerConfig.ResourceGroupName,
-                    autoScalerConfig.SqlInstanceName, metric.ElasticPoolName, newPoolSettings).ConfigureAwait(false);
+                if (autoScalerConfig.IsDryRun)
+                {
+                    logger.LogWarning($"{serverAndPool}: Dry run enabled. Would scale from {currentVCore} to {newPoolSettings.VCore}");
+                }
+                else
+                {
+                    logger.LogWarning($"{serverAndPool}: Scaling from {currentVCore} to {newPoolSettings.VCore}");
+                    await ScaleElasticPoolAsync(autoScalerConfig.ResourceGroupName,
+                        autoScalerConfig.SqlInstanceName, metric.ElasticPoolName, newPoolSettings).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -122,11 +129,13 @@ public class AutoScaler(
         }
     }
 
+    private static string CreateSqlCompatibleList(List<string> poolsToConsider)
+    {
+        return string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
+    }
     private async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
-        // Create a SQL compatible list of Elastic Pool Names
-        var elasticPoolNames = string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
-
+        var elasticPoolNames = CreateSqlCompatibleList(poolsToConsider);
         // There is a view in the master database, sys.elastic_pool_resource_stats, which provides
         // metrics for all elastic pools on a given server, but its metrics are significantly delayed.
         // We've seen delays over 5 minutes.
@@ -210,7 +219,7 @@ public class AutoScaler(
                                  FROM
                                      sys.dm_elastic_pool_resource_stats
                                  WHERE
-                                     end_time >= DATEADD(SECOND, -{autoScalerConfig.LookBackSeconds}, GETUTCDATE())  -- Retrieve data from the last 15 minutes
+                                     end_time >= DATEADD(SECOND, -{autoScalerConfig.LookBackSeconds}, GETUTCDATE())
                              ),
 
                              HighCpuStreak AS (
@@ -386,13 +395,15 @@ public class AutoScaler(
     /// <returns>A list of pools currently transitioning.</returns>
     private async Task<IEnumerable<string>?> GetPoolsInTransitionAsync()
     {
-        const string sql = """
-                           SELECT major_resource_id AS [ElasticPoolInTransition], state_desc AS [State]
-                           FROM sys.dm_operation_status
-                           WHERE resource_type = 0 -- Database
-                           AND operation = 'UPDATE ELASTIC POOL'
-                           AND state IN (0, 1, 4)
-                           """;
+        var elasticPoolNames = CreateSqlCompatibleList(autoScalerConfig.ElasticPools);
+        var sql = $"""
+                   SELECT major_resource_id AS [ElasticPoolInTransition], state_desc AS [State]
+                   FROM sys.dm_operation_status
+                   WHERE resource_type = 0 -- Database
+                   AND operation = 'UPDATE ELASTIC POOL'
+                   AND state IN (0, 1, 4)
+                   AND major_resource_id IN ({elasticPoolNames});
+                   """;
         try
         {
             // The states for pools in transition might be:
@@ -639,6 +650,13 @@ public class AutoScaler(
             if (elasticPool.Data.Sku.Capacity == (int)newPoolSettings.VCore)
             {
                 RecordError($"{elasticPoolName}: Pool is already at {newPoolSettings.VCore} vCores. Nothing to do.");
+                return;
+            }
+
+            // If dry run is enabled, log the intended scaling action and return
+            if (autoScalerConfig.IsDryRun)
+            {
+                logger.LogWarning($"{elasticPoolName}: Dry run enabled. Would scale to {newPoolSettings.VCore} vCores.");
                 return;
             }
 

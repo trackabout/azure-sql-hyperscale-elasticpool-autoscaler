@@ -1,3 +1,4 @@
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -8,7 +9,6 @@ public class AutoScalerTests
 {
     private readonly AutoScaler _autoScaler;
     private readonly AutoScalerConfiguration _config;
-
     public AutoScalerTests()
     {
         var inMemorySettings = new Dictionary<string, string>

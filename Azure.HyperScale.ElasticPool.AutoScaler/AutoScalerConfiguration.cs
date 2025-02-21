@@ -29,6 +29,7 @@ public class AutoScalerConfiguration
     public decimal LowDataIoPercent { get; set; }
     public int RetryCount { get; }
     public int RetryInterval { get; }
+    public bool IsDryRun { get; set; }
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -64,6 +65,15 @@ public class AutoScalerConfiguration
 
         RetryCount = configuration.GetValue<int>("RetryCount", 3);
         RetryInterval = configuration.GetValue<int>("RetryInterval", 2);
+
+        IsDryRun = configuration.GetValue<bool>("IsDryRun");
+
+        /// In our experience, there are only ever 128 metrics stored, and the range is
+        /// somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
+        if (LookBackSeconds > 2500)
+        {
+            throw new InvalidOperationException("LookBackSeconds must be less than 2500.");
+        }
 
         // There must be the same number of VCoreOptions as PerDatabaseMaximums
         if (VCoreOptions.Count != PerDatabaseMaximums.Count)
@@ -131,7 +141,8 @@ public class AutoScalerConfiguration
                $"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}\n" +
                $"IsSentryLoggingEnabled: {IsSentryLoggingEnabled}\n" +
                $"RetryCount: {RetryCount}\n" +
-               $"RetryInterval: {RetryInterval}\n";
+               $"RetryInterval: {RetryInterval}\n" +
+               $"IsDryRun: {IsDryRun}\n";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)
