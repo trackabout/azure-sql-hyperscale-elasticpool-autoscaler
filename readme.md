@@ -132,7 +132,7 @@ Deploy the solution to Azure and set up the application settings using the conte
 - **SubscriptionId**: The Azure subscription ID where the server lives. Needed for scaling operations.
 - **SqlInstanceName**: Name of the Azure SQL Server instance where the Elastic Pools are hosted. Needed for scaling operations.
 - **ResourceGroupName**: Name of the resource group where the Azure SQL Server is hosted. Needed for scaling operations.
-- **ElasticPools**: Comma separated list of Elastic Pools to monitor.
+- **ElasticPools**: Comma separated list of Elastic Pools to monitor. You may set a custom VCoreFloor for any given pool by adding a colon and the vCore, like `"PoolName1:8,PoolName2"`. In this case, PoolName1 will be kept at a floor of 8 vCore while PoolName2 will use the global floor.
 - **LowCpuPercent**, **HighCpuPercent**: Average CPU Percent low and high thresholds.
 - **LowWorkersPercent**, **HighWorkersPercent**: Workers Percent low and high thresholds.
 - **LowInstanceCpuPercent**, **HighInstanceCpuPercent**: SQL Instance CPU Percent low and high thresholds.
