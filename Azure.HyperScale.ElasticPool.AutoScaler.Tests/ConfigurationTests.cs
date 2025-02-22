@@ -169,4 +169,41 @@ public class ConfigurationTests
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
         Assert.Contains("None of the numeric values should be negative.", exception.Message);
     }
+
+    [Fact]
+    public void AutoScalerConfiguration_ParsesElasticPoolsWithCustomVCoreFloors()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "ElasticPools", "ProdDbPoolHS1,ProdDbPoolHS2:8" } });
+        var autoScalerConfig = new AutoScalerConfiguration(configuration);
+
+        // Assert
+        Assert.Equal(2, autoScalerConfig.ElasticPools.Count);
+        Assert.True(autoScalerConfig.ElasticPools.ContainsKey("ProdDbPoolHS1"));
+        Assert.True(autoScalerConfig.ElasticPools.ContainsKey("ProdDbPoolHS2"));
+        Assert.Null(autoScalerConfig.ElasticPools["ProdDbPoolHS1"]);
+        Assert.Equal(8, autoScalerConfig.ElasticPools["ProdDbPoolHS2"]);
+    }
+
+    [Fact]
+    public void GetVCoreFloorForPool_ReturnsCorrectVCoreFloor()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "ElasticPools", "ProdDbPoolHS1,ProdDbPoolHS2:8,ProdDbPoolHS3,ProdDbPoolHS4:10" } });
+        var autoScalerConfig = new AutoScalerConfiguration(configuration);
+
+        // Act & Assert
+        Assert.Equal(4, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS1"));
+        Assert.Equal(8, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS2"));
+        Assert.Equal(4, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS3"));
+        Assert.Equal(10, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS4"));
+    }
+    [Fact]
+    public void CustomPoolFloorOutOfBounds_ThrowsException()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?>
+    {
+        { "ElasticPools", "ProdDbPoolHS1:200" } // 200 is out of bounds of VCoreOptions
+    });
+
+        var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
+    }
 }

@@ -50,7 +50,7 @@ public class AutoScaler(
 
             // Check for pending scaling operations
             var poolsInTransition = await GetPoolsInTransitionAsync().ConfigureAwait(false);
-            var poolsToConsider = autoScalerConfig.ElasticPools;
+            var poolsToConsider = autoScalerConfig.ElasticPools.Keys.ToList();
 
             // If there are ongoing operations for specific elastic pools, exclude them from the rest of this execution.
             if (poolsInTransition != null)
@@ -59,7 +59,7 @@ public class AutoScaler(
                 // Case-insensitive comparison of pool names, just in case we mistype them in the config.
                 // Remove from consideration any pools that are in transition.
                 var poolsInTransitionSet = new HashSet<string>(poolsInTransition, StringComparer.OrdinalIgnoreCase);
-                poolsToConsider = autoScalerConfig.ElasticPools
+                poolsToConsider = autoScalerConfig.ElasticPools.Keys
                     .Where(pool => !poolsInTransitionSet.Contains(pool))
                     .ToList();
             }
@@ -395,7 +395,7 @@ public class AutoScaler(
     /// <returns>A list of pools currently transitioning.</returns>
     private async Task<IEnumerable<string>?> GetPoolsInTransitionAsync()
     {
-        var elasticPoolNames = CreateSqlCompatibleList(autoScalerConfig.ElasticPools);
+        var elasticPoolNames = CreateSqlCompatibleList(autoScalerConfig.ElasticPools.Keys.ToList());
         var sql = $"""
                    SELECT major_resource_id AS [ElasticPoolInTransition], state_desc AS [State]
                    FROM sys.dm_operation_status
@@ -574,6 +574,9 @@ public class AutoScaler(
         var vCoreOptions = autoScalerConfig.VCoreOptions;
         var currentIndex = Array.IndexOf(vCoreOptions.ToArray(), currentCpu);
 
+        // Check for a custom vCore floor setting for this pool
+        var vCoreFloor = autoScalerConfig.GetVCoreFloorForPool(elasticPoolName);
+
         // If currentCpu is not found in the array (this would be unusual), return currentCpu.
         if (currentIndex == -1)
         {
@@ -588,10 +591,10 @@ public class AutoScaler(
 
             case ScalingActions.Up:
                 // If we're below the floor, raise to the floor.
-                if (currentCpu < autoScalerConfig.VCoreFloor)
+                if (currentCpu < vCoreFloor)
                 {
-                    logger.LogWarning($"{elasticPoolName}: Current vCore setting {currentCpu} is below the floor {autoScalerConfig.VCoreFloor}. Raising to floor.");
-                    return autoScalerConfig.VCoreFloor;
+                    logger.LogWarning($"{elasticPoolName}: Current vCore setting {currentCpu} is below the floor {vCoreFloor}. Raising to floor.");
+                    return vCoreFloor;
                 }
 
                 // If we're at or above the ceiling, hold at ceiling.
@@ -613,10 +616,10 @@ public class AutoScaler(
                 }
 
                 // If we're at or below the floor, hold at the floor.
-                if (currentCpu <= autoScalerConfig.VCoreFloor)
+                if (currentCpu <= vCoreFloor)
                 {
-                    logger.LogInformation($"{elasticPoolName}: Current vCore setting {currentCpu} is at or below the floor {autoScalerConfig.VCoreFloor}. Keeping at floor.");
-                    return autoScalerConfig.VCoreFloor;
+                    logger.LogInformation($"{elasticPoolName}: Current vCore setting {currentCpu} is at or below the floor {vCoreFloor}. Keeping at floor.");
+                    return vCoreFloor;
                 }
 
                 // Otherwise, look up the correct next step.
@@ -760,7 +763,7 @@ public class AutoScaler(
     {
         try
         {
-            var elasticPools = autoScalerConfig.ElasticPools;
+            var elasticPools = autoScalerConfig.ElasticPools.Keys.ToList();
             foreach (var pool in elasticPools)
             {
                 var elasticPool = await GetElasticPoolAsync(autoScalerConfig.ResourceGroupName, autoScalerConfig.SqlInstanceName, pool).ConfigureAwait(false);

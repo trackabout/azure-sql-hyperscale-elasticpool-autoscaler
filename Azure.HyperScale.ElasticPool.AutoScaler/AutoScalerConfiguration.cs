@@ -10,7 +10,7 @@ public class AutoScalerConfiguration
     public string SubscriptionId { get; }
     public string SqlInstanceName { get; }
     public string ResourceGroupName { get; }
-    public List<string> ElasticPools { get; set; }
+    public Dictionary<string, double?> ElasticPools { get; set; }
     public decimal LowCpuPercent { get; }
     public decimal HighCpuPercent { get; }
     public decimal LowWorkersPercent { get; }
@@ -39,7 +39,7 @@ public class AutoScalerConfiguration
         SubscriptionId = configuration.GetValue<string>("SubscriptionId") ?? throw new InvalidOperationException("SubscriptionId is not set.");
         SqlInstanceName = configuration.GetValue<string>("SqlInstanceName") ?? throw new InvalidOperationException("SqlInstanceName is not set.");
         ResourceGroupName = configuration.GetValue<string>("ResourceGroupName") ?? throw new InvalidOperationException("ResourceGroupName is not set.");
-        ElasticPools = configuration.GetValue<string>("ElasticPools")?.Split(',').Select(p => p.Trim()).ToList() ?? throw new InvalidOperationException("ElasticPools is not set.");
+
 
         LowCpuPercent = configuration.GetValue<decimal>("LowCpuPercent");
         HighCpuPercent = configuration.GetValue<decimal>("HighCpuPercent");
@@ -67,6 +67,23 @@ public class AutoScalerConfiguration
         RetryInterval = configuration.GetValue<int>("RetryInterval", 2);
 
         IsDryRun = configuration.GetValue<bool>("IsDryRun");
+
+        ElasticPools = configuration.GetValue<string>("ElasticPools")?
+            .Split(',')
+            .Select(p => p.Trim())
+            .ToDictionary(
+            p => p.Split(':')[0].Trim(),
+            p =>
+            {
+                var value = p.Contains(':') ? double.Parse(p.Split(':')[1].Trim()) : (double?)null;
+                if (value.HasValue && !VCoreOptions.Contains(value.Value))
+                {
+                    throw new InvalidOperationException($"Custom vCore floor {value.Value} for pool {p.Split(':')[0].Trim()} is not within the bounds of VCoreOptions.");
+                }
+                return value;
+            }
+            ) ?? throw new InvalidOperationException("ElasticPools is not set.");
+
 
         /// In our experience, there are only ever 128 metrics stored, and the range is
         /// somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
@@ -112,6 +129,15 @@ public class AutoScalerConfiguration
         }
 
         IsSentryLoggingEnabled = configuration.GetValue<bool>("IsSentryLoggingEnabled");
+    }
+
+    public double GetVCoreFloorForPool(string poolName)
+    {
+        if (ElasticPools.TryGetValue(poolName, out var customVCoreFloor) && customVCoreFloor.HasValue)
+        {
+            return customVCoreFloor.Value;
+        }
+        return VCoreFloor;
     }
 
     public override string ToString()
