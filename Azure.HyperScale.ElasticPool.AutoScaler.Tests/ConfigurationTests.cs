@@ -176,7 +176,6 @@ public class ConfigurationTests
         var configuration = LoadConfiguration(new Dictionary<string, string?> { { "ElasticPools", "ProdDbPoolHS1,ProdDbPoolHS2:8" } });
         var autoScalerConfig = new AutoScalerConfiguration(configuration);
 
-        // Assert
         Assert.Equal(2, autoScalerConfig.ElasticPools.Count);
         Assert.True(autoScalerConfig.ElasticPools.ContainsKey("ProdDbPoolHS1"));
         Assert.True(autoScalerConfig.ElasticPools.ContainsKey("ProdDbPoolHS2"));
@@ -187,13 +186,15 @@ public class ConfigurationTests
     [Fact]
     public void GetVCoreFloorForPool_ReturnsCorrectVCoreFloor()
     {
-        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "ElasticPools", "ProdDbPoolHS1,ProdDbPoolHS2:8,ProdDbPoolHS3,ProdDbPoolHS4:10" } });
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { {
+            "ElasticPools", "ProdDbPoolHS1,ProdDbPoolHS2:8,ProdDbPoolHS3,ProdDbPoolHS4:10" }, {
+            "VCoreFloor", "6"
+            } });
         var autoScalerConfig = new AutoScalerConfiguration(configuration);
 
-        // Act & Assert
-        Assert.Equal(4, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS1"));
+        Assert.Equal(6, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS1"));
         Assert.Equal(8, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS2"));
-        Assert.Equal(4, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS3"));
+        Assert.Equal(6, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS3"));
         Assert.Equal(10, autoScalerConfig.GetVCoreFloorForPool("ProdDbPoolHS4"));
     }
     [Fact]
