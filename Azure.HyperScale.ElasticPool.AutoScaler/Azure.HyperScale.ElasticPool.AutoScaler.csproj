@@ -15,18 +15,18 @@
     <PackageReference Include="azure.resourcemanager" Version="1.13.0" />
     <PackageReference Include="azure.resourcemanager.sql" Version="1.2.1" />
     <PackageReference Include="dapper" Version="2.1.66" />
-    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.0.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.0.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.0.1" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.1" />
     <PackageReference Include="microsoft.data.sqlclient" Version="6.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="moq" Version="4.20.72" />
     <PackageReference Include="Polly" Version="8.5.2" />
-    <PackageReference Include="Sentry.Azure.Functions.Worker" Version="5.1.1" />
+    <PackageReference Include="Sentry.Azure.Functions.Worker" Version="5.2.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.core" Version="2.9.3" />
   </ItemGroup>

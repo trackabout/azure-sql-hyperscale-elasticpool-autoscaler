@@ -264,3 +264,7 @@ __pycache__/
 *.pyc
 test*.json
 
+# Azurite
+__blobstorage__/
+__queuestorage__/
+__azurite*.json
