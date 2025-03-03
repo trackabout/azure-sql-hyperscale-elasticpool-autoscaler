@@ -18,7 +18,7 @@ var host = new HostBuilder()
             {
                 options.Dsn = sentryDsn;
                 options.Debug = false;
-                options.TracesSampleRate = 0.0;     //Tracing is not required for this. 
+                options.TracesSampleRate = 0.0;     //Tracing is not required for this.
             });
         }
     })
