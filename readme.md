@@ -1,4 +1,4 @@
-# Azure SQL Hyperscale Elastic Pool Autoscaler
+# Azure SQL Hyperscale Elastic Pool AutoScaler
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -25,7 +25,7 @@ We look at four key metrics:
 - Worker Percentage
 - Data IO Percentage
 
-In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the four most important CPU-related metrics to monitor for scaling operations within an elastic pool.
+In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the four most important metrics to monitor for scaling operations within an elastic pool. Depending on your workload, you might wish to extend the function to monitor other metrics, such as Log IO Percentage.
 
 Through configuration, you can control:
 
@@ -146,17 +146,19 @@ Deploy the solution to Azure and set up the application settings using the conte
 - **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false.
 - **SentryDsn**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true.
 - **IsDryRun**: Will not scale, only logs what it would do.
+- **MaxExpectedScalingTimeSeconds**: The longest we expect a scaling operation to take. WARNING log lines will be written should an in-process scaling operation take longer than this value.
+- **CoolDownPeriodSeconds**: It is recommended by Microsoft Azure to wait 5-10 minutes before issuing another scaling operation against the same elastic pool. We call this the cool down period.
 
 ## Hysteresis Configuration
 
-The Hyperscale elastic pool environment generally posts new performance metrics every 15 seconds or so. That is why this AutoScaler is initially set to run every 15 seconds. You will want to set parameters that provide a balance between responsiveness and stability. Here are some recommendations based on the metrics frequency:
+The Hyperscale elastic pool environment generally posts new performance metrics every 20 seconds or so. The function should run every 15 seconds. You will want to set parameters that provide a balance between responsiveness and stability. Here are some recommendations based:
 
 ### 1. **LookBackSeconds**
 
-**Recommended Range**: 900–1800 seconds (15–30 minutes). Since metrics are generated every 15 seconds, this window will yield 60–120 data points in 15–30 minutes.
-**Maximum**: 2500. In our experience, there are only ever 128 metrics stored, and the range is somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
+**Recommended:** 900 seconds (15 minutes). Metrics are generated every 20 seconds. A 900 second lookback will yield ~45 data points.
+**Maximum**: 2500. In our experience, there is a max of 128 historical metrics rows, making range is somewhere between 2528 and 2625 seconds.
 
-**Rationale**: A 15- to 30-minute lookback window is usually sufficient to capture significant trends in usage without being overly reactive to short spikes or dips.
+**Rationale**: A 15-minute lookback window is usually sufficient to capture trends in usage without being overly reactive to short spikes or dips.
 
 Shorter windows (e.g., 5–10 minutes) would likely capture transient behavior rather than a consistent trend, potentially leading to frequent, unnecessary scaling actions.
 
@@ -164,7 +166,7 @@ Shorter windows (e.g., 5–10 minutes) would likely capture transient behavior r
 
 **Recommended Range**: 5–10
 
-With a 15-minute lookback window (900 seconds), a threshold of 5 would mean you need about 75 seconds (5 readings at 15 seconds each) of high utilization to trigger a scaling up decision.
+With a 15-minute lookback window (900 seconds), a threshold of 5 would mean you need about 75 seconds (5 readings at 20 seconds each) of high utilization to trigger a scaling up decision.
 
 If you set it at 10, then you require 150 seconds (2.5 minutes) of high utilization.
 

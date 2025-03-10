@@ -25,7 +25,9 @@
     "PerDatabaseMaximums": "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80",
     "RetryCount": "3",
     "RetryInterval": "5",
-    "IsDryRun": "false"
+    "IsDryRun": "false",
+    "MaxExpectedScalingTimeSeconds": "420",
+    "CoolDownPeriodSeconds": "600"
   },
   "ConnectionStrings": {
     "PoolDbConnection": "Server=tcp:sql_server_host;Database={DatabaseName};auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",

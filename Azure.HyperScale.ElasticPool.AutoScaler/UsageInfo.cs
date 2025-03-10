@@ -9,25 +9,17 @@ public class UsageInfo
     public decimal WorkersPercent { get; set; } = 0m;
     public decimal AvgInstanceCpuPercent { get; set; } = 0m;
     public int HighCpuCount { get; set; } = 0;
-    public DateTime LastHighCpuTime { get; set; } = DateTime.MinValue;
     public int LowCpuCount { get; set; } = 0;
-    public DateTime LastLowCpuTime { get; set; } = DateTime.MinValue;
 
     public int HighWorkerCount { get; set; } = 0;
-    public DateTime LastHighWorkerTime { get; set; } = DateTime.MinValue;
     public int LowWorkerCount { get; set; } = 0;
-    public DateTime LastLowWorkerTime { get; set; } = DateTime.MinValue;
 
     public int HighInstanceCpuCount { get; set; } = 0;
-    public DateTime LastHighInstanceCpuTime { get; set; } = DateTime.MinValue;
     public int LowInstanceCpuCount { get; set; } = 0;
-    public DateTime LastLowInstanceCpuTime { get; set; } = DateTime.MinValue;
 
     public decimal AvgDataIoPercent { get; set; } = 0m;
     public int HighDataIoCount { get; set; } = 0;
-    public DateTime LastHighDataIoTime { get; set; } = DateTime.MinValue;
     public int LowDataIoCount { get; set; } = 0;
-    public DateTime LastLowDataIoTime { get; set; } = DateTime.MinValue;
 
     public override string ToString()
     {

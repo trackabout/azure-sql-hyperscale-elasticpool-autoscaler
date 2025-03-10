@@ -40,6 +40,8 @@ public class AutoScaler(
     {
         try
         {
+            logger.LogInformation("==================================================================================");
+            logger.LogInformation("--------------------------------- AutoScaler Run ---------------------------------");
             // Check permissions
             var hasPermissions = await CheckPermissionsAsync().ConfigureAwait(false);
             if (!hasPermissions)
@@ -61,6 +63,27 @@ public class AutoScaler(
                 var poolsInTransitionSet = new HashSet<string>(poolsInTransition, StringComparer.OrdinalIgnoreCase);
                 poolsToConsider = autoScalerConfig.ElasticPools.Keys
                     .Where(pool => !poolsInTransitionSet.Contains(pool))
+                    .ToList();
+            }
+
+            // Remove from consideration any pools that completed a scaling operation within the last CoolDownPeriodSeconds.
+            var lastScalingOperations = await GetLastScalingOperationsAsync().ConfigureAwait(false);
+            if (lastScalingOperations != null)
+            {
+                var poolsToExclude = lastScalingOperations
+                    .Where(kv => kv.Value < autoScalerConfig.CoolDownPeriodSeconds)
+                    .Select(kv => kv.Key)
+                    .ToList();
+
+                // If there are pools to exclude, log them.
+                if (poolsToExclude.Count > 0)
+                {
+                    logger.LogInformation($"Skipping recently scaled pools due to cooldown period: {string.Join(", ", poolsToExclude)}");
+                }
+
+                // Case-insensitive comparison of pool names, just in case we mistype them in the config.
+                poolsToConsider = poolsToConsider
+                    .Where(pool => !poolsToExclude.Contains(pool, StringComparer.OrdinalIgnoreCase))
                     .ToList();
             }
 
@@ -90,16 +113,16 @@ public class AutoScaler(
     private async Task CheckAndScalePoolsAsync(IEnumerable<UsageInfo> poolMetrics)
     {
         // Loop through each pool and evaluate the metrics
-        foreach (var metric in poolMetrics)
+        foreach (var usageInfo in poolMetrics)
         {
-            var serverAndPool = $"{autoScalerConfig.SqlInstanceName}.{metric.ElasticPoolName}";
-            logger.LogInformation($"Evaluating pool {serverAndPool}");
-            logger.LogInformation(metric.ToString());
+            var serverAndPool = $"{autoScalerConfig.SqlInstanceName}.{usageInfo.ElasticPoolName}";
+            logger.LogInformation($"\n                 --=> Evaluating Pool {serverAndPool} <=--");
+            logger.LogInformation(usageInfo.ToString());
 
-            var currentVCore = (double)metric.ElasticPoolCpuLimit;
+            var currentVCore = (double)usageInfo.ElasticPoolCpuLimit;
 
             // Figure out the new target vCore.
-            var newPoolSettings = CalculatePoolTargetSettings(metric, currentVCore);
+            var newPoolSettings = CalculatePoolTargetSettings(usageInfo, currentVCore);
 
             // If the target vCore is the same as the current vCore, no scaling is necessary.
             if (newPoolSettings.VCore.Equals(currentVCore)) continue;
@@ -109,13 +132,13 @@ public class AutoScaler(
             {
                 if (autoScalerConfig.IsDryRun)
                 {
-                    logger.LogWarning($"{serverAndPool}: Dry run enabled. Would scale from {currentVCore} to {newPoolSettings.VCore}");
+                    logger.LogWarning($"DRY RUN ENABLED: Would have scaled {serverAndPool} from {currentVCore} to {newPoolSettings.VCore}");
                 }
                 else
                 {
-                    logger.LogWarning($"{serverAndPool}: Scaling from {currentVCore} to {newPoolSettings.VCore}");
+                    logger.LogWarning($"ACTION!: Scaling {serverAndPool} from {currentVCore} to {newPoolSettings.VCore}");
                     await ScaleElasticPoolAsync(autoScalerConfig.ResourceGroupName,
-                        autoScalerConfig.SqlInstanceName, metric.ElasticPoolName, newPoolSettings).ConfigureAwait(false);
+                        autoScalerConfig.SqlInstanceName, usageInfo.ElasticPoolName, newPoolSettings).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -125,7 +148,7 @@ public class AutoScaler(
             }
 
             // Write current SLO to monitor table
-            await WriteMetricsAsync(metric, currentVCore, newPoolSettings.VCore).ConfigureAwait(false);
+            await WriteMetricsAsync(usageInfo, currentVCore, newPoolSettings.VCore).ConfigureAwait(false);
         }
     }
 
@@ -222,80 +245,72 @@ public class AutoScaler(
                                      end_time >= DATEADD(SECOND, -{autoScalerConfig.LookBackSeconds}, GETUTCDATE())
                              ),
 
-                             HighCpuStreak AS (
+                             HighCpuCount AS (
                                  SELECT
-                                     COUNT(*) AS HighCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighCpuTime
+                                     COUNT(*) AS HighCpuCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_cpu_percent >= {autoScalerConfig.HighCpuPercent}
                              ),
 
-                             LowCpuStreak AS (
+                             LowCpuCount AS (
                                  SELECT
-                                     COUNT(*) AS LowCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowCpuTime
+                                     COUNT(*) AS LowCpuCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_cpu_percent <= {autoScalerConfig.LowCpuPercent}
                              ),
 
-                             HighWorkerStreak AS (
+                             HighWorkerCount AS (
                                  SELECT
-                                     COUNT(*) AS HighWorkerCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighWorkerTime
+                                     COUNT(*) AS HighWorkerCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      max_worker_percent >= {autoScalerConfig.HighWorkersPercent}
                              ),
 
-                             LowWorkerStreak AS (
+                             LowWorkerCount AS (
                                  SELECT
-                                     COUNT(*) AS LowWorkerCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowWorkerTime
+                                     COUNT(*) AS LowWorkerCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      max_worker_percent <= {autoScalerConfig.LowWorkersPercent}
                              ),
 
-                             HighInstanceCpuStreak AS (
+                             HighInstanceCpuCount AS (
                                  SELECT
-                                     COUNT(*) AS HighInstanceCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighInstanceCpuTime
+                                     COUNT(*) AS HighInstanceCpuCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_instance_cpu_percent >= {autoScalerConfig.HighInstanceCpuPercent}
                              ),
 
-                             LowInstanceCpuStreak AS (
+                             LowInstanceCpuCount AS (
                                  SELECT
-                                     COUNT(*) AS LowInstanceCpuCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowInstanceCpuTime
+                                     COUNT(*) AS LowInstanceCpuCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_instance_cpu_percent <= {autoScalerConfig.LowInstanceCpuPercent}
                              ),
 
-                             HighDataIoStreak AS (
+                             HighDataIoCount AS (
                                  SELECT
-                                     COUNT(*) AS HighDataIoCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastHighDataIoTime
+                                     COUNT(*) AS HighDataIoCount
                                  FROM
                                      PoolStats
                                  WHERE
                                      avg_data_io_percent >= {autoScalerConfig.HighDataIoPercent}
                              ),
 
-                             LowDataIoStreak AS (
+                             LowDataIoCount AS (
                                  SELECT
-                                     COUNT(*) AS LowDataIoCount,
-                                     ISNULL(MAX(end_time), '1900-01-01') AS LastLowDataIoTime
+                                     COUNT(*) AS LowDataIoCount
                                  FROM
                                      PoolStats
                                  WHERE
@@ -311,39 +326,31 @@ public class AutoScaler(
                                  ps.avg_instance_cpu_percent as AvgInstanceCpuPercent,
                                  ps.avg_data_io_percent as AvgDataIoPercent,
                                  hcs.HighCpuCount,
-                                 ISNULL(hcs.LastHighCpuTime, '1900-01-01') as LastHighCpuTime,
                                  lcs.LowCpuCount,
-                                 ISNULL(lcs.LastLowCpuTime, '1900-01-01') as LastLowCpuTime,
                                  hws.HighWorkerCount,
-                                 ISNULL(hws.LastHighWorkerTime, '1900-01-01') as LastHighWorkerTime,
                                  lws.LowWorkerCount,
-                                 ISNULL(lws.LastLowWorkerTime, '1900-01-01') as LastLowWorkerTime,
                                  his.HighInstanceCpuCount,
-                                 ISNULL(his.LastHighInstanceCpuTime, '1900-01-01') as LastHighInstanceCpuTime,
                                  lis.LowInstanceCpuCount,
-                                 ISNULL(lis.LastLowInstanceCpuTime, '1900-01-01') as LastLowInstanceCpuTime,
                                  hdis.HighDataIoCount,
-                                 ISNULL(hdis.LastHighDataIoTime, '1900-01-01') as LastHighDataIoTime,
-                                 ldis.LowDataIoCount,
-                                 ISNULL(ldis.LastLowDataIoTime, '1900-01-01') as LastLowDataIoTime
+                                 ldis.LowDataIoCount
                              FROM
                                  PoolStats ps
                              CROSS JOIN
-                                 HighCpuStreak hcs
+                                 HighCpuCount hcs
                              CROSS JOIN
-                                 LowCpuStreak lcs
+                                 LowCpuCount lcs
                              CROSS JOIN
-                                 HighWorkerStreak hws
+                                 HighWorkerCount hws
                              CROSS JOIN
-                                 LowWorkerStreak lws
+                                 LowWorkerCount lws
                              CROSS JOIN
-                                 HighInstanceCpuStreak his
+                                 HighInstanceCpuCount his
                              CROSS JOIN
-                                 LowInstanceCpuStreak lis
+                                 LowInstanceCpuCount lis
                              CROSS JOIN
-                                 HighDataIoStreak hdis
+                                 HighDataIoCount hdis
                              CROSS JOIN
-                                 LowDataIoStreak ldis
+                                 LowDataIoCount ldis
                              WHERE
                                  ps.RowNum = 1;  -- Get the latest entry
 
@@ -390,43 +397,110 @@ public class AutoScaler(
     }
 
     /// <summary>
+    /// Retrieves the number of seconds since the last completed scaling operation for each elastic pool
+    /// we are monitoring. Queries sys.dm_operation_status for the last successfully completed scaling operations.
+    /// Rows in sys.dm_operation_status only stick around for about 30 minutes. But that's long enough for our purposes.
+    /// </summary>
+    /// <returns>A dictionary of elastic pool names and the number of seconds since their last scaling operation.</returns>
+    private async Task<Dictionary<string, int>?> GetLastScalingOperationsAsync()
+    {
+        var elasticPoolNames = CreateSqlCompatibleList(autoScalerConfig.ElasticPools.Keys.ToList());
+        var sql = $"""
+                   SELECT
+                       major_resource_id AS [ElasticPoolName],
+                       DATEDIFF(SECOND, MAX(last_modify_time), GETUTCDATE()) AS [SecondsSinceLastScaling]
+                   FROM sys.dm_operation_status
+                   WHERE resource_type = 0 -- Database
+                   AND operation = 'UPDATE ELASTIC POOL'
+                   AND state = 2 -- Completed
+                   AND major_resource_id IN ({elasticPoolNames})
+                   GROUP BY major_resource_id;
+                   """;
+        try
+        {
+            var retryPolicy = GetRetryPolicy();
+
+            return await retryPolicy.ExecuteAsync(async () =>
+            {
+                await using var masterConnection = CreateSqlConnection(autoScalerConfig.MasterSqlConnection);
+                var results = await masterConnection.QueryAsync<(string ElasticPoolName, int SecondsSinceLastScaling)>(sql).ConfigureAwait(false);
+
+                var resultDict = results.ToDictionary(
+                    p => p.ElasticPoolName,
+                    p => p.SecondsSinceLastScaling
+                );
+
+                return resultDict;
+            }).ConfigureAwait(false);
+        }
+        catch (SqlException ex)
+        {
+            RecordError(ex, $"{autoScalerConfig.SqlInstanceName}: Failed to retrieve last scaling operations from master database.");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Retrieves the names of elastic pools that are currently in transition.
     /// </summary>
     /// <returns>A list of pools currently transitioning.</returns>
     private async Task<IEnumerable<string>?> GetPoolsInTransitionAsync()
     {
         var elasticPoolNames = CreateSqlCompatibleList(autoScalerConfig.ElasticPools.Keys.ToList());
+        // Ensure we're only looking at the most recent UPDATE ELASTIC POOL entry
+        // for each pool under consideration.
+
+        // The states for pools in transition might be:
+        // 0 = Pending
+        // 1 = In progress
+        // 4 = Cancel in progress
+        // The states we're not concerned with:
+        // 2 = Completed
+        // 3 = Failed
+        // 5 = Cancelled
+
         var sql = $"""
-                   SELECT major_resource_id AS [ElasticPoolInTransition], state_desc AS [State]
-                   FROM sys.dm_operation_status
-                   WHERE resource_type = 0 -- Database
-                   AND operation = 'UPDATE ELASTIC POOL'
-                   AND state IN (0, 1, 4)
-                   AND major_resource_id IN ({elasticPoolNames});
-                   """;
+               WITH LatestOperations AS (
+                    SELECT
+                        major_resource_id AS [ElasticPoolInTransition],
+                        state_desc AS [State],
+                        DATEDIFF(SECOND, start_time, last_modify_time) AS [OperationDurationSeconds],
+                        ROW_NUMBER() OVER (PARTITION BY major_resource_id ORDER BY last_modify_time DESC) AS rn
+                    FROM sys.dm_operation_status
+                    WHERE resource_type = 0 -- Database
+                    AND operation = 'UPDATE ELASTIC POOL'
+                    AND state IN (0, 1, 4)
+                    AND major_resource_id IN ({elasticPoolNames})
+               )
+               SELECT
+               ElasticPoolInTransition,
+               State,
+               OperationDurationSeconds
+               FROM LatestOperations
+               WHERE rn = 1;
+               """;
         try
         {
-            // The states for pools in transition might be:
-            // 0 = Pending
-            // 1 = In progress
-            // 4 = Cancel in progress
-            // The states we're not concerned with:
-            // 2 = Completed
-            // 3 = Failed
-            // 5 = Cancelled
 
             var retryPolicy = GetRetryPolicy();
 
             return await retryPolicy.ExecuteAsync(async () =>
             {
                 await using var masterConnection = CreateSqlConnection(autoScalerConfig.MasterSqlConnection);
-                var pools = (await masterConnection.QueryAsync<(string ElasticPoolInTransition, string State)>(sql)
+                var pools = (await masterConnection.QueryAsync<(string ElasticPoolInTransition, string State, int OperationDurationSeconds)>(sql)
                     .ConfigureAwait(false)).ToList();
 
                 // Log each pool's state
                 foreach (var pool in pools)
                 {
                     logger.LogInformation("Pool {PoolName} is in state {State}", pool.ElasticPoolInTransition, pool.State);
+
+                    // Log a warning if any pool in transition is taking longer than expected
+                    if (pool.State.ToUpper() == "IN PROGRESS" && pool.OperationDurationSeconds > autoScalerConfig.MaxExpectedScalingTimeSeconds)
+                    {
+                        logger.LogWarning("Pool {PoolName} has been in transition for {DurationSeconds} seconds. This is longer than the configured expected max scaling time of {MaxExpectedScalingTimeSeconds}.",
+                            pool.ElasticPoolInTransition, pool.OperationDurationSeconds, autoScalerConfig.MaxExpectedScalingTimeSeconds);
+                    }
                 }
 
                 // Return only the pool names
@@ -463,7 +537,6 @@ public class AutoScaler(
     {
         var targetVCore = currentVCore;
         var perDbMaxCapacity = GetPerDatabaseMaximumByIndex(currentVCore);
-
         var scalingAction = GetScalingAction(usageInfo);
 
         switch (scalingAction)
@@ -473,7 +546,7 @@ public class AutoScaler(
                 perDbMaxCapacity = GetPerDatabaseMaximumByIndex(targetVCore);
                 if (targetVCore > currentVCore)
                 {
-                    logger.LogWarning($"{usageInfo.ElasticPoolName}: HIGH threshold reached. Will scale UP from {currentVCore} to {targetVCore}");
+                    logger.LogWarning($"EVALUATION RESULT: HIGH threshold crossed.");
                 }
                 break;
             case ScalingActions.Down:
@@ -481,12 +554,12 @@ public class AutoScaler(
                 perDbMaxCapacity = GetPerDatabaseMaximumByIndex(targetVCore);
                 if (targetVCore < currentVCore)
                 {
-                    logger.LogWarning($"{usageInfo.ElasticPoolName}: LOW threshold reached. Will scale DOWN from {currentVCore} to {targetVCore}");
+                    logger.LogWarning($"EVALUATION RESULT: LOW threshold crossed.");
                 }
                 break;
 
             case ScalingActions.Hold:
-                logger.LogInformation($"{usageInfo.ElasticPoolName}: HOLD Current vCore: {currentVCore}. No change required.");
+                logger.LogInformation($"EVALUATION RESULT: HOLD, no change required.");
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(scalingAction));

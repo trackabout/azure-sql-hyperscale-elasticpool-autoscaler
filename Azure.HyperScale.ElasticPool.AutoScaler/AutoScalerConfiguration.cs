@@ -30,6 +30,8 @@ public class AutoScalerConfiguration
     public int RetryCount { get; }
     public int RetryInterval { get; }
     public bool IsDryRun { get; set; }
+    public int MaxExpectedScalingTimeSeconds { get; }
+    public int CoolDownPeriodSeconds { get; }
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -67,6 +69,9 @@ public class AutoScalerConfiguration
         RetryInterval = configuration.GetValue<int>("RetryInterval", 2);
 
         IsDryRun = configuration.GetValue<bool>("IsDryRun");
+
+        MaxExpectedScalingTimeSeconds = configuration.GetValue<int>("MaxExpectedScalingTimeSeconds");
+        CoolDownPeriodSeconds = configuration.GetValue<int>("CoolDownPeriodSeconds");
 
         ElasticPools = configuration.GetValue<string>("ElasticPools")?
             .Split(',')
@@ -168,7 +173,9 @@ public class AutoScalerConfiguration
                $"IsSentryLoggingEnabled: {IsSentryLoggingEnabled}\n" +
                $"RetryCount: {RetryCount}\n" +
                $"RetryInterval: {RetryInterval}\n" +
-               $"IsDryRun: {IsDryRun}\n";
+               $"IsDryRun: {IsDryRun}\n" +
+               $"MaxExpectedScalingTimeSeconds: {MaxExpectedScalingTimeSeconds}\n" +
+               $"CoolDownPeriodSeconds: {CoolDownPeriodSeconds}\n";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)
