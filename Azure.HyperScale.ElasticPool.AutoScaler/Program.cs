@@ -24,7 +24,8 @@ var host = new HostBuilder()
             });
         }
     })
-    .ConfigureServices(services => {
+    .ConfigureServices(services =>
+    {
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
         services.AddLogging();
@@ -45,6 +46,14 @@ var host = new HostBuilder()
             var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
             var errorRecorder = sp.GetRequiredService<IErrorRecorder>();
             return new SqlRepository(logger, autoScalerConfig, errorRecorder);
+        });
+        services.AddSingleton<IAzureResourceService, AzureResourceService>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<AzureResourceService>>();
+            var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
+            var errorRecorder = sp.GetRequiredService<IErrorRecorder>();
+            var sqlRepository = sp.GetRequiredService<ISqlRepository>();
+            return new AzureResourceService(autoScalerConfig, logger, errorRecorder, sqlRepository);
         });
         services.AddTransient<AutoScaler>();
     })

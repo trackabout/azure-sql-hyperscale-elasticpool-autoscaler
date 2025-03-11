@@ -8,7 +8,7 @@ namespace Azure.HyperScale.ElasticPool.AutoScaler
         private readonly AutoScalerConfiguration autoScalerConfig = autoScalerConfig;
         private const string SentryTagSqlInstanceName = "SqlInstanceName";
 
-        public void RecordError(Exception ex, string message)
+        public void RecordError(Exception? ex, string message)
         {
             logger.LogError(ex, message);
 
@@ -18,23 +18,17 @@ namespace Azure.HyperScale.ElasticPool.AutoScaler
                 {
                     scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
                 });
-                SentrySdk.CaptureException(ex);
+
+                if (ex != null)
+                    SentrySdk.CaptureException(ex);
+
                 SentrySdk.CaptureMessage(message, SentryLevel.Error);
             }
         }
 
         public void RecordError(string message)
         {
-            logger.LogError(message);
-
-            if (autoScalerConfig.IsSentryLoggingEnabled)
-            {
-                SentrySdk.ConfigureScope(scope =>
-                {
-                    scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-                });
-                SentrySdk.CaptureMessage(message, SentryLevel.Error);
-            }
+            RecordError(null, message);
         }
     }
 }

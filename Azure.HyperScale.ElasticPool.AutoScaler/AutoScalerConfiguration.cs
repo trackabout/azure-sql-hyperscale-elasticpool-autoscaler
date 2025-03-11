@@ -11,18 +11,18 @@ public class AutoScalerConfiguration
     public string SqlInstanceName { get; }
     public string ResourceGroupName { get; }
     public Dictionary<string, double?> ElasticPools { get; set; }
-    public decimal LowCpuPercent { get; }
-    public decimal HighCpuPercent { get; }
-    public decimal LowWorkersPercent { get; }
-    public decimal HighWorkersPercent { get; }
-    public decimal LowInstanceCpuPercent { get; }
-    public decimal HighInstanceCpuPercent { get; }
+    public decimal LowCpuPercent { get; set;}
+    public decimal HighCpuPercent { get; set;}
+    public decimal LowWorkersPercent { get; set;}
+    public decimal HighWorkersPercent { get; set; }
+    public decimal LowInstanceCpuPercent { get; set; }
+    public decimal HighInstanceCpuPercent { get; set;}
     public decimal LowDataIoPercent { get; set; }
     public decimal HighDataIoPercent { get; set; }
     public int LongWindowLookback { get; }
     public int ShortWindowLookback { get; }
-    public double VCoreFloor { get; }
-    public double VCoreCeiling { get; }
+    public double VCoreFloor { get; set; }
+    public double VCoreCeiling { get; set; }
     public List<double> VCoreOptions { get; }
     public List<double> PerDatabaseMaximums { get; }
     public bool IsSentryLoggingEnabled { get; }
@@ -190,5 +190,13 @@ public class AutoScalerConfiguration
         }
 
         return parsedOptions;
+    }
+
+    public double GetPerDatabaseMaxByVCore(double targetVCore)
+    {
+        // Look up the array index of the targetVCore
+        var index = VCoreOptions.ToList().IndexOf(targetVCore);
+        // Fetch the element from the PerDatabaseMaximums array at the same index
+        return PerDatabaseMaximums.ElementAt(index);
     }
 }

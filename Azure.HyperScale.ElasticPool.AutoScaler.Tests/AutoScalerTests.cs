@@ -1,4 +1,3 @@
-using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -9,6 +8,8 @@ public class AutoScalerTests
 {
     private readonly AutoScaler _autoScaler;
     private readonly AutoScalerConfiguration _config;
+    private readonly Mock<ISqlRepository> _sqlRepositoryMock;
+    private readonly Mock<IErrorRecorder> _errorRecorderMock;
     public AutoScalerTests()
     {
         var inMemorySettings = new Dictionary<string, string>
@@ -22,23 +23,28 @@ public class AutoScalerTests
             {"ElasticPools", "test-pool1,test-pool2,test-pool3"},
 
             {"LowCpuPercent", "10"},
-            {"LowWorkersPercent", "20"},
-            {"LowInstanceCpuPercent", "15"},
-            {"LowDataIoPercent", "10"},
-
             {"HighCpuPercent", "80"},
+
+            {"LowWorkersPercent", "20"},
             {"HighWorkersPercent", "90"},
+
+            {"LowInstanceCpuPercent", "15"},
             {"HighInstanceCpuPercent", "85"},
+
+            {"LowDataIoPercent", "10"},
             {"HighDataIoPercent", "80"},
 
-            {"HighCountThreshold", "5"},
-            {"LowCountThreshold", "5"},
-            {"LookBackSeconds", "900"},
+            {"LongWindowLookback", "1800"},
+            {"ShortWindowLookback", "300"},
 
             {"VCoreFloor", "6"},
             {"VCoreCeiling", "24"},
+
             {"VCoreOptions", "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128"},
             {"PerDatabaseMaximums",  "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"},
+
+            {"MaxExpectedScalingTimeSeconds", "300"}, // 5m
+            {"CoolDownPeriodSeconds", "600"}, // 10m
 
             {"IsSentryLoggingEnabled", "false"}  // Sensible default
         };
@@ -49,358 +55,443 @@ public class AutoScalerTests
 
         _config = new AutoScalerConfiguration(configuration);
         Mock<ILogger<AutoScaler>> loggerMock = new();
-        _autoScaler = new AutoScaler(loggerMock.Object, _config);
+        _sqlRepositoryMock = new Mock<ISqlRepository>();
+        _errorRecorderMock = new Mock<IErrorRecorder>();
+        Mock<IAzureResourceService> azureResourceServiceMock = new();
+        _autoScaler = new AutoScaler(loggerMock.Object, _config, _sqlRepositoryMock.Object, _errorRecorderMock.Object, azureResourceServiceMock.Object);
     }
 
+
+
+    // [Fact]
+    // public void ScaleUp_HighCpu()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LongAvgCpu = 90
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_AtHighWorkerCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighWorkerCount = 5
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_AtHighInstanceCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighInstanceCpuCount = 5
+    //     };
+    //     const int currentCpu = 12;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(14, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(10, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_OverHighCpuCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighCpuCount = 20
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_OverHighWorkerCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighWorkerCount = 25
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_OverHighInstanceCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighInstanceCpuCount = 5
+    //     };
+    //     const int currentCpu = 12;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(14, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(10, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_AllCountsExceededThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighCpuCount = 20,
+    //         HighWorkerCount = 20,
+    //         HighInstanceCpuCount = 20,
+    //         HighDataIoCount = 20
+    //     };
+    //     const int currentCpu = 12;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(14, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(10, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void Hold_OnlyOneLowThresholdMet()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 0,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 35,
+    //         LowDataIoCount = 0
+    //     };
+    //     const int currentCpu = 10;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(10, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(6, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void Hold_OnlyTwoLowThresholdsMet()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 0,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5,
+    //         LowDataIoCount = 0
+    //     };
+    //     const int currentCpu = 10;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(10, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(6, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_LowAllThresholdsMet()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 5,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5,
+    //         LowDataIoCount = 5
+    //     };
+    //     const int currentCpu = 10;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(8, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(6, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void NoChange_CurrentWithinBounds()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighCpuCount = 0,
+    //         HighWorkerCount = 0,
+    //         HighInstanceCpuCount = 0,
+    //         LowCpuCount = 0,
+    //         LowWorkerCount = 0,
+    //         LowInstanceCpuCount = 0
+    //     };
+    //     const int currentCpu = 12;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(12, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(8, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_JustBelowCeiling_ScalesToCeiling()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighCpuCount = 5,
+    //     };
+    //     const int currentCpu = 20;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreCeiling, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(18, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_AtCeiling_StaysAtCeiling()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighInstanceCpuCount = 5
+    //     };
+    //     var currentCpu = _config.VCoreCeiling;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreCeiling, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(18, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_JustAboveFloor_ScalesToFloor()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 10,
+    //         LowWorkerCount = 10,
+    //         LowInstanceCpuCount = 10,
+    //         LowDataIoCount = 10
+    //     };
+    //     const int currentCpu = 8;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreFloor, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_AtFloor_StaysAtFloor()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 5,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5
+    //     };
+    //     var currentCpu = _config.VCoreFloor;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreFloor, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_SetToFloorWhenBelowFloor()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 5,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5,
+    //         LowDataIoCount = 5
+    //     };
+    //     const int currentCpu = 4; // Below configured floor
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreFloor, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_SetToCeilingWhenAboveCeiling()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 5,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5,
+    //         LowDataIoCount = 5
+    //     };
+    //     const int currentCpu = 128; // Well above configured ceiling
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(_config.VCoreCeiling, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(18, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleDown_ComeDownFromCeiling()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         LowCpuCount = 5,
+    //         LowWorkerCount = 5,
+    //         LowInstanceCpuCount = 5,
+    //         LowDataIoCount = 5
+
+    //     };
+    //     var currentCpu = _config.VCoreCeiling;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(20, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(14, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_AtHighDataIoCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighDataIoCount = 5
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // [Fact]
+    // public void ScaleUp_OverHighDataIoCountThreshold()
+    // {
+    //     var usageInfo = new UsageInfo
+    //     {
+    //         HighDataIoCount = 20
+    //     };
+    //     const int currentCpu = 4;
+
+    //     var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
+
+    //     Assert.Equal(6, result.VCore);
+    //     Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
+    //     Assert.Equal(4, result.PerDbMaxCapacity);
+    // }
+
+    // GetNewPoolTarget Tests
     [Fact]
-    public void ScaleUp_AtHighCpuCountThreshold()
+    public void GetNewPoolTarget_ScalesUp_WhenShortAndLongHigh()
     {
         var usageInfo = new UsageInfo
         {
-            HighCpuCount = 5
+            ShortAvgCpu = _config.HighCpuPercent + 1,
+            LongAvgCpu = _config.HighCpuPercent + 1,
         };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
+        const double currentVCore = 4;
+        var result = _autoScaler.GetNewPoolTarget(usageInfo, currentVCore);
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
     [Fact]
-    public void ScaleUp_AtHighWorkerCountThreshold()
+    public void GetNewPoolTarget_ScalesDown_WhenAllShortAndLongLow()
     {
         var usageInfo = new UsageInfo
         {
-            HighWorkerCount = 5
+            ShortAvgCpu = _config.LowCpuPercent - 1,
+            LongAvgCpu = _config.LowCpuPercent - 1,
+            ShortDataIo = _config.LowDataIoPercent - 1,
+            LongDataIo = _config.LowDataIoPercent - 1,
+            ShortInstanceCpu = _config.LowInstanceCpuPercent - 1,
+            LongInstanceCpu = _config.LowInstanceCpuPercent - 1,
+            ShortWorkersPercent = _config.LowWorkersPercent - 1,
+            LongWorkersPercent = _config.LowWorkersPercent - 1
         };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
+        const double currentVCore = 6;
+        var result = _autoScaler.GetNewPoolTarget(usageInfo, currentVCore);
+        Assert.Equal(4, result.VCore);
     }
 
     [Fact]
-    public void ScaleUp_AtHighInstanceCountThreshold()
+    public void GetNewPoolTarget_Holds_WhenInBetweenThresholds()
     {
         var usageInfo = new UsageInfo
         {
-            HighInstanceCpuCount = 5
+            // Set all the values just above their low threshold.
+            ShortAvgCpu = _config.LowCpuPercent + 1,
+            LongAvgCpu = _config.LowCpuPercent + 1,
+            ShortDataIo = _config.LowDataIoPercent + 1,
+            LongDataIo = _config.LowDataIoPercent + 1,
+            ShortInstanceCpu = _config.LowInstanceCpuPercent + 1,
+            LongInstanceCpu = _config.LowInstanceCpuPercent + 1,
+            ShortWorkersPercent = _config.LowWorkersPercent + 1,
+            LongWorkersPercent = _config.LowWorkersPercent + 1
         };
-        const int currentCpu = 12;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(14, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(10, result.PerDbMaxCapacity);
+        const double currentVCore = 6;
+        var result = _autoScaler.GetNewPoolTarget(usageInfo, currentVCore);
+        Assert.Equal(currentVCore, result.VCore);
     }
 
     [Fact]
-    public void ScaleUp_OverHighCpuCountThreshold()
+    public void GetNewPoolTarget_RisesToFloor_WhenBelowFloor()
     {
+        // Simulate usage that indicates scaling up, with a currentVCore below the floor
         var usageInfo = new UsageInfo
         {
-            HighCpuCount = 20
+            ShortAvgCpu = _config.HighCpuPercent + 1,
+            LongAvgCpu = _config.HighCpuPercent + 1,
         };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_OverHighWorkerCountThreshold()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighWorkerCount = 25
-        };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_OverHighInstanceCountThreshold()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighInstanceCpuCount = 5
-        };
-        const int currentCpu = 12;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(14, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(10, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_AllCountsExceededThreshold()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighCpuCount = 20,
-            HighWorkerCount = 20,
-            HighInstanceCpuCount = 20,
-            HighDataIoCount = 20
-        };
-        const int currentCpu = 12;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(14, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(10, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void Hold_OnlyOneLowThresholdMet()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 0,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 35,
-            LowDataIoCount = 0
-        };
-        const int currentCpu = 10;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(10, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(6, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void Hold_OnlyTwoLowThresholdsMet()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 0,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5,
-            LowDataIoCount = 0
-        };
-        const int currentCpu = 10;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(10, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(6, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleDown_LowAllThresholdsMet()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 5,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5,
-            LowDataIoCount = 5
-        };
-        const int currentCpu = 10;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(8, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(6, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void NoChange_CurrentWithinBounds()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighCpuCount = 0,
-            HighWorkerCount = 0,
-            HighInstanceCpuCount = 0,
-            LowCpuCount = 0,
-            LowWorkerCount = 0,
-            LowInstanceCpuCount = 0
-        };
-        const int currentCpu = 12;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(12, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(8, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_JustBelowCeiling_ScalesToCeiling()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighCpuCount = 5,
-        };
-        const int currentCpu = 20;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(18, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_AtCeiling_StaysAtCeiling()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighInstanceCpuCount = 5
-        };
-        var currentCpu = _config.VCoreCeiling;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(18, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleDown_JustAboveFloor_ScalesToFloor()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 10,
-            LowWorkerCount = 10,
-            LowInstanceCpuCount = 10,
-            LowDataIoCount = 10
-        };
-        const int currentCpu = 8;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
+        const double currentVCore = 2;
+        var result = _autoScaler.GetNewPoolTarget(usageInfo, currentVCore);
         Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
     [Fact]
-    public void ScaleDown_AtFloor_StaysAtFloor()
+    public void GetNewPoolTarget_LowerToCeiling_WhenAboveCeiling()
     {
+        // Simulate usage that indicates scaling down, with currentVCore above the ceiling
         var usageInfo = new UsageInfo
         {
-            LowCpuCount = 5,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5
+            // All metrics are 0 by default, so "low"u
         };
-        var currentCpu = _config.VCoreFloor;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleDown_SetToFloorWhenBelowFloor()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 5,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5,
-            LowDataIoCount = 5
-        };
-        const int currentCpu = 4; // Below configured floor
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleDown_SetToCeilingWhenAboveCeiling()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 5,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5,
-            LowDataIoCount = 5
-        };
-        const int currentCpu = 128; // Well above configured ceiling
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
+        const double currentVCore = 128;
+        var result = _autoScaler.GetNewPoolTarget(usageInfo, currentVCore);
         Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(18, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleDown_ComeDownFromCeiling()
-    {
-        var usageInfo = new UsageInfo
-        {
-            LowCpuCount = 5,
-            LowWorkerCount = 5,
-            LowInstanceCpuCount = 5,
-            LowDataIoCount = 5
-
-        };
-        var currentCpu = _config.VCoreCeiling;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(20, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(14, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_AtHighDataIoCountThreshold()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighDataIoCount = 5
-        };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
-    }
-
-    [Fact]
-    public void ScaleUp_OverHighDataIoCountThreshold()
-    {
-        var usageInfo = new UsageInfo
-        {
-            HighDataIoCount = 20
-        };
-        const int currentCpu = 4;
-
-        var result = _autoScaler.CalculatePoolTargetSettings(usageInfo, currentCpu);
-
-        Assert.Equal(6, result.VCore);
-        Assert.Equal(0, AutoScaler.PoolTargetSettings.PerDbMinCapacity);
-        Assert.Equal(4, result.PerDbMaxCapacity);
     }
 }

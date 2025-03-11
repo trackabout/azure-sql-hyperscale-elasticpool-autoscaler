@@ -166,9 +166,9 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// Retrieves the names of elastic pools that are currently in transition.
     /// </summary>
     /// <returns>A list of pools currently transitioning.</returns>
-    public async Task<IEnumerable<string>?> GetPoolsInTransitionAsync()
+    public async Task<IEnumerable<string>> GetPoolsInTransitionAsync()
     {
-        var elasticPoolNames = CreateSqlCompatibleList(_config.ElasticPools.Keys.ToList());
+        var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
         // Ensure we're only looking at the most recent UPDATE ELASTIC POOL entry
         // for each pool under consideration.
 
@@ -233,7 +233,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
         {
             // Log the exception with a descriptive message.
             _errorRecorder.RecordError(ex, $"{_config.SqlInstanceName}: Failed to retrieve elastic pool transition status from master database.");
-            return null;
+            return new List<string>();
         }
     }
 
@@ -245,7 +245,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// <returns>A dictionary of elastic pool names and the number of seconds since their last scaling operation.</returns>
     public async Task<Dictionary<string, int>?> GetLastScalingOperationsAsync()
     {
-        var elasticPoolNames = CreateSqlCompatibleList(_config.ElasticPools.Keys.ToList());
+        var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
         var sql = $"""
                    SELECT
                        major_resource_id AS [ElasticPoolName],
@@ -295,7 +295,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
         return sqlConnection;
     }
 
-    public async Task WriteToAutoScaleMonitorTable(UsageInfo elasticPool, double currentVCore, double targetVCore)
+    public async Task WriteToAutoScaleMonitorTableAsync(UsageInfo elasticPool, double currentVCore, double targetVCore)
     {
         // If no connection string is set here, just return.
         if (_config.MetricsSqlConnection.Length == 0)
@@ -323,5 +323,47 @@ public class SqlRepository(ILogger<SqlRepository> logger,
             _errorRecorder.RecordError(ex,
                 $"{elasticPool.ElasticPoolName}: Error while writing metrics to AutoScalerMonitor table.");
         }
+    }
+
+    /// <summary>
+    /// Returns a list of elastic pools currently within the cooldown period.
+    /// </summary>
+    public async Task<IEnumerable<string>> GetPoolsInCoolDown()
+    {
+        // Remove from consideration any pools that completed a scaling operation within the last CoolDownPeriodSeconds.
+
+        var lastScalingOperations = await GetLastScalingOperationsAsync().ConfigureAwait(false);
+        if (lastScalingOperations != null)
+        {
+            var poolsInCoolDown = lastScalingOperations
+                .Where(kv => kv.Value < _config.CoolDownPeriodSeconds)
+                .Select(kv => kv.Key)
+                .ToList();
+
+            if (poolsInCoolDown.Count > 0)
+            {
+                _logger.LogInformation($"Skipping recently scaled pools due to cooldown period: {string.Join(", ", poolsInCoolDown)}");
+            }
+            return poolsInCoolDown;
+        }
+        return [];
+    }
+    /// <summary>
+    /// Determines the pools to consider for scaling by taking the basic list
+    /// from configuration and excluding pools in transition or in cool down.
+    /// </summary>
+    /// <returns>A list of pools to consider for scaling.</returns>
+    public async Task<List<string>> GetPoolsToConsider()
+    {
+        var poolsToConsider = _config.ElasticPools.Keys.ToList();
+
+        // Get pools in transition and cool down
+        var poolsInTransition = await GetPoolsInTransitionAsync().ConfigureAwait(false);
+        var poolsInCoolDown = await GetPoolsInCoolDown().ConfigureAwait(false);
+
+        // Remove from consideration pools with scaling operations in progress or in cool down period.
+        var excludedPools = poolsInTransition.Concat(poolsInCoolDown).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        poolsToConsider = [.. poolsToConsider.Where(pool => !excludedPools.Contains(pool))];
+        return poolsToConsider;
     }
 }

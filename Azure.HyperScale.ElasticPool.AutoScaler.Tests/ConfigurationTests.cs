@@ -207,4 +207,44 @@ public class ConfigurationTests
 
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
     }
+
+    [Fact]
+    public void ValidConfiguration_Succeeds()
+    {
+        // Arrange
+        var config = LoadConfiguration(new Dictionary<string, string?>
+        {
+            {"ConnectionStrings:PoolDbConnection", "test-pool-conn"},
+            {"ConnectionStrings:MasterSqlConnection", "test-master-conn"},
+            {"SubscriptionId", "abc123"},
+            {"ElasticPools", "MyPool"},
+            {"VCoreFloor", "4"},
+            {"VCoreCeiling", "16"},
+            {"VCoreOptions", "4,6,8,16"},
+            {"PerDatabaseMaximums", "2,4,8,12"},
+            {"LowCpuPercent","10"},
+            {"HighCpuPercent","80"},
+            // ...any other required settings...
+        });
+
+        // Act
+        var autoScalerConfig = new AutoScalerConfiguration(config);
+
+        // Assert
+        Assert.NotNull(autoScalerConfig);
+        Assert.Equal(4, autoScalerConfig.VCoreFloor);
+        Assert.Equal(16, autoScalerConfig.VCoreCeiling);
+    }
+
+    [Fact]
+    public void MissingRequiredValue_ThrowsException()
+    {
+        // Arrange
+        var config = LoadConfiguration(new Dictionary<string, string?> {
+            {"ConnectionStrings:PoolDbConnection", null}
+        });
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(config));
+    }
 }
