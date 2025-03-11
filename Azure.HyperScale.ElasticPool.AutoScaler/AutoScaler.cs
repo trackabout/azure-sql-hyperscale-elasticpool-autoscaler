@@ -27,6 +27,15 @@ public class AutoScaler(
     [Function("AutoScaler")]
     public async Task Run([TimerTrigger("*/15 * * * * *")] TimerInfo myTimer)
     {
+        _ = await DoTheThing().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Main function that does the scaling evaluation and scaling.
+    /// </summary>
+    /// <returns></returns>
+    public async Task<bool> DoTheThing()
+    {
         try
         {
             _logger.LogInformation("==================================================================================");
@@ -37,21 +46,21 @@ public class AutoScaler(
             if (!hasPermissions)
             {
                 _logger.LogError("Insufficient permissions to access elastic pools.");
-                return;
+                return false;
             }
 
             var poolsToConsider = await _sqlRepository.GetPoolsToConsider().ConfigureAwait(false);
             if (poolsToConsider.Count == 0)
             {
                 _logger.LogInformation($"No pools to left to evaluate for server {_config.SqlInstanceName}.");
-                return;
+                return false;
             }
 
             var poolMetrics = await _sqlRepository.SamplePoolMetricsAsync(poolsToConsider).ConfigureAwait(false);
             if (poolMetrics == null)
             {
                 _errorRecorder.RecordError($"Unexpected: SamplePoolMetricsAsync() returned null while sampling pool metrics for server {_config.SqlInstanceName}.");
-                return;
+                return false;
             }
 
             // Loop through each pool and evaluate the metrics
@@ -62,8 +71,10 @@ public class AutoScaler(
         }
         catch (Exception ex)
         {
-            _errorRecorder.RecordError(ex, "Unexpected error in AutoScaler.Run() function.");
+            _errorRecorder.RecordError(ex, "Unexpected error in AutoScaler.");
         }
+
+        return true;
     }
 
     private async Task EvaluateMetrics(UsageInfo usageInfo)

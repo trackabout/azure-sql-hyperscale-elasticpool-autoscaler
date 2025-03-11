@@ -127,6 +127,24 @@ public class AutoScalerConfiguration
         }
 
         IsSentryLoggingEnabled = configuration.GetValue<bool>("IsSentryLoggingEnabled");
+
+        // LongWindowLookback must be greater than ShortWindowLookback
+        if (LongWindowLookback <= ShortWindowLookback)
+        {
+            throw new InvalidOperationException("LongWindowLookback must be greater than ShortWindowLookback.");
+        }
+
+        // LongWindowLookback must be positive
+        if (LongWindowLookback <= 0)
+        {
+            throw new InvalidOperationException("LongWindowLookback must be positive.");
+        }
+
+        // ShortWindowLookback must be positive
+        if (ShortWindowLookback <= 0)
+        {
+            throw new InvalidOperationException("ShortWindowLookback must be positive.");
+        }
     }
 
     public double GetVCoreFloorForPool(string poolName)

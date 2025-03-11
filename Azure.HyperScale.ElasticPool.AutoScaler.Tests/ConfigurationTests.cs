@@ -8,9 +8,12 @@ public class ConfigurationTests
     {
         var defaultSettings = new Dictionary<string, string?>
         {
+            // Connection strings
             {"ConnectionStrings:PoolDbConnection", "test-pool-sql-connection-string"},
             {"ConnectionStrings:MetricsSqlConnection", "test-metrics-sql-connection-string"},
             {"ConnectionStrings:MasterSqlConnection", "test-master-sql-connection-string"},
+
+            // Settings
             {"SubscriptionId", "test-subscription-id"},
             {"SqlInstanceName", "test-sql-instance-name"},
             {"ResourceGroupName", "test-resource-group-name"},
@@ -21,15 +24,20 @@ public class ConfigurationTests
             {"HighWorkersPercent", "50"},
             {"LowInstanceCpuPercent", "20"},
             {"HighInstanceCpuPercent", "70"},
-            {"LowCountThreshold", "5"},
-            {"HighCountThreshold", "15"},
             {"LowDataIoPercent", "20"},
             {"HighDataIoPercent", "70"},
-            {"LookBackSeconds", "900"},
             {"VCoreFloor", "4"},
             {"VCoreCeiling", "16"},
             {"VCoreOptions", "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128"},
-            {"PerDatabaseMaximums", "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"}
+            {"PerDatabaseMaximums", "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"},
+            {"LongWindowSeconds", "1800"},
+            {"ShortWindowSeconds", "300"},
+            {"IsSentryLoggingEnabled", "false"},
+            {"RetryCount", "3"},
+            {"RetryInterval", "5"},
+            {"IsDryRun", "false"},
+            {"MaxExpectedScalingTimeSeconds", "300"},
+            {"CoolDownPeriodSeconds", "300"},
         };
 
         if (overrides != null)
@@ -129,7 +137,6 @@ public class ConfigurationTests
     public void InvalidVCoreListFormat_ThrowsException()
     {
         var configuration = LoadConfiguration(new Dictionary<string, string?> { { "VCoreOptions", "4,8,foo,16" } });
-
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
         Assert.Contains("vCore list must be a comma-separated list of doubles.", exception.Message);
     }
@@ -138,7 +145,6 @@ public class ConfigurationTests
     public void MissingElasticPools_ThrowsException()
     {
         var configuration = LoadConfiguration(new Dictionary<string, string?> { { "ElasticPools", null } });
-
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
         Assert.Contains("ElasticPools is not set.", exception.Message);
     }
@@ -147,7 +153,6 @@ public class ConfigurationTests
     public void MissingSubscriptionId_ThrowsException()
     {
         var configuration = LoadConfiguration(new Dictionary<string, string?> { { "SubscriptionId", null } });
-
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
         Assert.Contains("SubscriptionId is not set.", exception.Message);
     }
@@ -162,13 +167,41 @@ public class ConfigurationTests
     }
 
     [Fact]
-    public void InvalidLookBackSeconds_ThrowsException()
+    public void LongWindowLookback_LessThan_ShortWindowLookback_ThrowsException()
     {
-        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "LookBackSeconds", "-1" } });
-
+        var configuration = LoadConfiguration(new Dictionary<string, string?>
+        {
+            { "LongWindowLookback", "200" },
+            { "ShortWindowLookback", "300" }
+        });
         var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
-        Assert.Contains("None of the numeric values should be negative.", exception.Message);
     }
+
+    [Fact]
+    public void LongWindowLookbackNegative_ThrowsException()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?>
+        {
+            { "LongWindowLookback", "-1" },
+            { "ShortWindowLookback", "-10" },
+        });
+        var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
+        Assert.Contains("LongWindowLookback must be positive.", exception.Message);
+    }
+
+
+    [Fact]
+    public void ShortWindowLookbackNegative_ThrowsException()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?>
+        {
+            { "LongWindowLookback", "1800" },
+            { "ShortWindowLookback", "-1" },
+        });
+        var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
+        Assert.Contains("ShortWindowLookback must be positive.", exception.Message);
+    }
+
 
     [Fact]
     public void AutoScalerConfiguration_ParsesElasticPoolsWithCustomVCoreFloors()
@@ -224,7 +257,6 @@ public class ConfigurationTests
             {"PerDatabaseMaximums", "2,4,8,12"},
             {"LowCpuPercent","10"},
             {"HighCpuPercent","80"},
-            // ...any other required settings...
         });
 
         // Act
