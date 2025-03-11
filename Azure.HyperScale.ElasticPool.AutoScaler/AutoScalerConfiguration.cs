@@ -17,23 +17,21 @@ public class AutoScalerConfiguration
     public decimal HighWorkersPercent { get; }
     public decimal LowInstanceCpuPercent { get; }
     public decimal HighInstanceCpuPercent { get; }
-    public int LowCountThreshold { get; }
-    public int HighCountThreshold { get; }
+    public decimal LowDataIoPercent { get; set; }
+    public decimal HighDataIoPercent { get; set; }
     public int LookBackSeconds { get; }
     public double VCoreFloor { get; }
     public double VCoreCeiling { get; }
     public List<double> VCoreOptions { get; }
     public List<double> PerDatabaseMaximums { get; }
     public bool IsSentryLoggingEnabled { get; }
-    public decimal HighDataIoPercent { get; set; }
-    public decimal LowDataIoPercent { get; set; }
     public int RetryCount { get; }
     public int RetryInterval { get; }
     public bool IsDryRun { get; set; }
     public int MaxExpectedScalingTimeSeconds { get; }
     public int CoolDownPeriodSeconds { get; }
-    public bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
-    public string ManagedIdentityClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") ?? string.Empty;
+    public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
+    public static string ManagedIdentityClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") ?? string.Empty;
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
@@ -54,8 +52,6 @@ public class AutoScalerConfiguration
         LowInstanceCpuPercent = configuration.GetValue<decimal>("LowInstanceCpuPercent");
         HighInstanceCpuPercent = configuration.GetValue<decimal>("HighInstanceCpuPercent");
 
-        LowCountThreshold = configuration.GetValue<int>("LowCountThreshold");
-        HighCountThreshold = configuration.GetValue<int>("HighCountThreshold");
         LookBackSeconds = configuration.GetValue<int>("LookBackSeconds");
 
         VCoreFloor = configuration.GetValue<double>("VCoreFloor");
@@ -130,7 +126,7 @@ public class AutoScalerConfiguration
         }
 
         // None of the numeric values should ever be negative.
-        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || LowCountThreshold < 0 || HighCountThreshold < 0 || LookBackSeconds < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
+        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || LookBackSeconds < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
@@ -165,8 +161,6 @@ public class AutoScalerConfiguration
                $"HighInstanceCpuPercent: {HighInstanceCpuPercent}\n" +
                $"LowDataIoPercent: {LowDataIoPercent}\n" +
                $"HighDataIoPercent: {HighDataIoPercent}\n" +
-               $"LowCountThreshold: {LowCountThreshold}\n" +
-               $"HighCountThreshold: {HighCountThreshold}\n" +
                $"LookBackSeconds: {LookBackSeconds}\n" +
                $"VCoreFloor: {VCoreFloor}\n" +
                $"VCoreCeiling: {VCoreCeiling}\n" +

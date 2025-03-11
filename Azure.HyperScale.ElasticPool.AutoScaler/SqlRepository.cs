@@ -288,11 +288,11 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     {
         var sqlConnection = new SqlConnection(connectionString);
 
-        if (_config.IsUsingManagedIdentity)
+        if (AutoScalerConfiguration.IsUsingManagedIdentity)
         {
             sqlConnection.AccessToken = new DefaultAzureCredential(new DefaultAzureCredentialOptions
             {
-                ManagedIdentityClientId = _config.ManagedIdentityClientId
+                ManagedIdentityClientId = AutoScalerConfiguration.ManagedIdentityClientId
             }).GetToken(new TokenRequestContext(new[] { "https://database.windows.net/.default" })).Token;
         }
         return sqlConnection;
