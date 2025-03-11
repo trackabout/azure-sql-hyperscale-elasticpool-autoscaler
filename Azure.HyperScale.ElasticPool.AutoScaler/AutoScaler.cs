@@ -57,7 +57,6 @@ public class AutoScaler(
             // If there are ongoing operations for specific elastic pools, exclude them from the rest of this execution.
             if (poolsInTransition != null)
             {
-
                 // Case-insensitive comparison of pool names, just in case we mistype them in the config.
                 // Remove from consideration any pools that are in transition.
                 var poolsInTransitionSet = new HashSet<string>(poolsInTransition, StringComparer.OrdinalIgnoreCase);
@@ -156,6 +155,88 @@ public class AutoScaler(
     {
         return string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
     }
+
+    private async Task<IEnumerable<UsageInfo>> GetShortLongWindowUsageAsync(IEnumerable<(string DatabaseName, string ElasticPoolName)> metricDbsToQuery)
+    {
+        const int longWindowSeconds = 30 * 60;  // 1800s = 30 minutes
+        const int shortWindowSeconds = 5 * 60;  // 300s = 5 minutes
+
+        var sql = $"""
+        DECLARE @LongWindowStartTime DATETIME = DATEADD(SECOND, -{longWindowSeconds}, GETUTCDATE());
+        DECLARE @ShortWindowStartTime DATETIME = DATEADD(SECOND, -{shortWindowSeconds}, GETUTCDATE());
+
+        WITH PoolStats AS (
+        SELECT
+            instance_vcores,
+            end_time,
+            avg_cpu_percent,
+            max_worker_percent,
+            avg_instance_cpu_percent,
+            avg_data_io_percent,
+            ROW_NUMBER() OVER (ORDER BY end_time DESC) AS RowNum
+        FROM
+            sys.dm_elastic_pool_resource_stats
+        WHERE
+            end_time >= @LongWindowStartTime
+        )
+        SELECT
+            (SELECT TOP 1 CAST(instance_vcores AS INT) FROM PoolStats ORDER BY end_time DESC) as ElasticPoolCpuLimit,
+            ISNULL(AVG(CASE WHEN end_time >= @ShortWindowStartTime THEN avg_cpu_percent END), AVG(avg_cpu_percent)) AS ShortAvgCpu,
+            AVG(avg_cpu_percent) AS LongAvgCpu,
+            ISNULL(AVG(CASE WHEN end_time >= @ShortWindowStartTime THEN max_worker_percent END), AVG(max_worker_percent)) AS ShortWorkers,
+            AVG(max_worker_percent) AS LongWorkers,
+            ISNULL(AVG(CASE WHEN end_time >= @ShortWindowStartTime THEN avg_instance_cpu_percent END), AVG(avg_instance_cpu_percent)) AS ShortInstCpu,
+            AVG(avg_instance_cpu_percent) AS LongInstCpu,
+            ISNULL(AVG(CASE WHEN end_time >= @ShortWindowStartTime THEN avg_data_io_percent END), AVG(avg_data_io_percent)) AS ShortDataIo,
+            AVG(avg_data_io_percent) AS LongDataIo
+        FROM
+            PoolStats;
+        """;
+
+        var tasks = metricDbsToQuery.Select(async db =>
+        {
+            try
+            {
+                var retryPolicy = GetRetryPolicy();
+
+                return await retryPolicy.ExecuteAsync(async () =>
+                {
+                    await using var databaseConnection = CreateSqlConnection(autoScalerConfig.PoolDbConnection.Replace("{DatabaseName}", db.DatabaseName));
+                    var statsRows = (await databaseConnection.QueryAsync<dynamic>(sql).ConfigureAwait(false)).ToList();
+
+                    if (statsRows.Count == 0)
+                    {
+                        return null;
+                    }
+
+                    var row = statsRows.First();
+
+                    return new UsageInfo
+                    {
+                        ElasticPoolName = db.ElasticPoolName,
+                        ElasticPoolCpuLimit = row.ElasticPoolCpuLimit,
+                        ShortAvgCpu = row.ShortAvgCpu,
+                        LongAvgCpu = row.LongAvgCpu,
+                        ShortWorkersPercent = row.ShortWorkers,
+                        LongWorkersPercent = row.LongWorkers,
+                        ShortInstanceCpu = row.ShortInstCpu,
+                        LongInstanceCpu = row.LongInstCpu,
+                        ShortDataIo = row.ShortDataIo,
+                        LongDataIo = row.LongDataIo
+                    };
+                }).ConfigureAwait(false);
+            }
+            catch (SqlException ex)
+            {
+                RecordError(ex, $"{db.ElasticPoolName}: Error fetching short and long window usage metrics.");
+                return null;
+            }
+        });
+
+        var metricsResults = await Task.WhenAll(tasks).ConfigureAwait(false);
+        return [.. metricsResults.Where(result => result != null).Select(result => result!)];
+    }
+
     private async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
         var elasticPoolNames = CreateSqlCompatibleList(poolsToConsider);
@@ -202,7 +283,7 @@ public class AutoScaler(
                     .QueryAsync<(string DatabaseName, string ElasticPoolName)>(findPoolDatabasesForMetrics)
                     .ConfigureAwait(false);
 
-                return await GetPoolMetrics(metricDbsToQuery).ConfigureAwait(false);
+                return await GetShortLongWindowUsageAsync(metricDbsToQuery).ConfigureAwait(false);
             });
         }
         catch (SqlException ex)
@@ -537,7 +618,7 @@ public class AutoScaler(
     {
         var targetVCore = currentVCore;
         var perDbMaxCapacity = GetPerDatabaseMaximumByIndex(currentVCore);
-        var scalingAction = GetScalingAction(usageInfo);
+        var scalingAction = GetScalingActionFromShortAndLongMetrics(usageInfo);
 
         switch (scalingAction)
         {
@@ -566,6 +647,42 @@ public class AutoScaler(
         }
 
         return new PoolTargetSettings(targetVCore, perDbMaxCapacity);
+    }
+
+    private ScalingActions GetScalingActionFromShortAndLongMetrics(UsageInfo usageInfo)
+    {
+        // Short-window checks
+        bool shortCpuHigh = usageInfo.ShortAvgCpu >= autoScalerConfig.HighCpuPercent;
+        bool shortWorkersHigh = usageInfo.ShortWorkersPercent >= autoScalerConfig.HighWorkersPercent;
+        bool shortInstCpuHigh = usageInfo.ShortInstanceCpu >= autoScalerConfig.HighInstanceCpuPercent;
+        bool shortDataIoHigh = usageInfo.ShortDataIo >= autoScalerConfig.HighDataIoPercent;
+
+        bool shortCpuLow = usageInfo.ShortAvgCpu <= autoScalerConfig.LowCpuPercent;
+        bool shortWorkersLow = usageInfo.ShortWorkersPercent <= autoScalerConfig.LowWorkersPercent;
+        bool shortInstCpuLow = usageInfo.ShortInstanceCpu <= autoScalerConfig.LowInstanceCpuPercent;
+        bool shortDataIoLow = usageInfo.ShortDataIo <= autoScalerConfig.LowDataIoPercent;
+
+        // Long-window checks
+        bool longCpuHigh = usageInfo.LongAvgCpu >= autoScalerConfig.HighCpuPercent;
+        bool longWorkersHigh = usageInfo.LongWorkersPercent >= autoScalerConfig.HighWorkersPercent;
+        bool longInstCpuHigh = usageInfo.LongInstanceCpu >= autoScalerConfig.HighInstanceCpuPercent;
+        bool longDataIoHigh = usageInfo.LongDataIo >= autoScalerConfig.HighDataIoPercent;
+
+        bool longCpuLow = usageInfo.LongAvgCpu <= autoScalerConfig.LowCpuPercent;
+        bool longWorkersLow = usageInfo.LongWorkersPercent <= autoScalerConfig.LowWorkersPercent;
+        bool longInstCpuLow = usageInfo.LongInstanceCpu <= autoScalerConfig.LowInstanceCpuPercent;
+        bool longDataIoLow = usageInfo.LongDataIo <= autoScalerConfig.LowDataIoPercent;
+
+        // Decide scaling
+        bool scaleUp = (shortCpuHigh && longCpuHigh) || (shortWorkersHigh && longWorkersHigh) ||
+                       (shortInstCpuHigh && longInstCpuHigh) || (shortDataIoHigh && longDataIoHigh);
+
+        bool scaleDown = shortCpuLow && shortWorkersLow && shortInstCpuLow && shortDataIoLow
+                         && longCpuLow && longWorkersLow && longInstCpuLow && longDataIoLow;
+
+        if (scaleUp) return ScalingActions.Up;
+        if (scaleDown) return ScalingActions.Down;
+        return ScalingActions.Hold;
     }
 
     private ScalingActions GetScalingAction(UsageInfo pool)
@@ -625,16 +742,16 @@ public class AutoScaler(
 
     private void WriteMetricsToLog(UsageInfo usageInfo, double currentVCore, double targetVCore)
     {
-        FunctionsLoggerExtensions.LogMetric(logger, "AvgCpuPercent", Convert.ToDouble(usageInfo.AvgCpuPercent));
+        FunctionsLoggerExtensions.LogMetric(logger, "AvgCpuPercent", Convert.ToDouble(usageInfo.AvgCpu));
         FunctionsLoggerExtensions.LogMetric(logger, "HighCpuCount", Convert.ToDouble(usageInfo.HighCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowCpuCount", Convert.ToDouble(usageInfo.LowCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "WorkersPercent", Convert.ToDouble(usageInfo.WorkersPercent));
         FunctionsLoggerExtensions.LogMetric(logger, "HighWorkerCount", Convert.ToDouble(usageInfo.HighWorkerCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowWorkerCount", Convert.ToDouble(usageInfo.LowWorkerCount));
-        FunctionsLoggerExtensions.LogMetric(logger, "AvgInstanceCpuPercent", Convert.ToDouble(usageInfo.AvgInstanceCpuPercent));
+        FunctionsLoggerExtensions.LogMetric(logger, "AvgInstanceCpuPercent", Convert.ToDouble(usageInfo.AvgInstanceCpu));
         FunctionsLoggerExtensions.LogMetric(logger, "HighInstanceCpuCount", Convert.ToDouble(usageInfo.HighInstanceCpuCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowInstanceCpuCount", Convert.ToDouble(usageInfo.LowInstanceCpuCount));
-        FunctionsLoggerExtensions.LogMetric(logger, "AvgDataIoPercent", Convert.ToDouble(usageInfo.AvgDataIoPercent));
+        FunctionsLoggerExtensions.LogMetric(logger, "AvgDataIoPercent", Convert.ToDouble(usageInfo.AvgDataIo));
         FunctionsLoggerExtensions.LogMetric(logger, "HighDataIoCount", Convert.ToDouble(usageInfo.HighDataIoCount));
         FunctionsLoggerExtensions.LogMetric(logger, "LowDataIoCount", Convert.ToDouble(usageInfo.LowDataIoCount));
 
