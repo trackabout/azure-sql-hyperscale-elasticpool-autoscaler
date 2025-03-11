@@ -19,7 +19,8 @@ public class AutoScalerConfiguration
     public decimal HighInstanceCpuPercent { get; }
     public decimal LowDataIoPercent { get; set; }
     public decimal HighDataIoPercent { get; set; }
-    public int LookBackSeconds { get; }
+    public int LongWindowLookback { get; }
+    public int ShortWindowLookback { get; }
     public double VCoreFloor { get; }
     public double VCoreCeiling { get; }
     public List<double> VCoreOptions { get; }
@@ -52,7 +53,8 @@ public class AutoScalerConfiguration
         LowInstanceCpuPercent = configuration.GetValue<decimal>("LowInstanceCpuPercent");
         HighInstanceCpuPercent = configuration.GetValue<decimal>("HighInstanceCpuPercent");
 
-        LookBackSeconds = configuration.GetValue<int>("LookBackSeconds");
+        LongWindowLookback = configuration.GetValue<int>("LongWindowLookback", 1800);
+        ShortWindowLookback = configuration.GetValue<int>("ShortWindowLookback", 300);
 
         VCoreFloor = configuration.GetValue<double>("VCoreFloor");
         VCoreCeiling = configuration.GetValue<double>("VCoreCeiling");
@@ -88,13 +90,6 @@ public class AutoScalerConfiguration
             ) ?? throw new InvalidOperationException("ElasticPools is not set.");
 
 
-        /// In our experience, there are only ever 128 metrics stored, and the range is
-        /// somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
-        if (LookBackSeconds > 2500)
-        {
-            throw new InvalidOperationException("LookBackSeconds must be less than 2500.");
-        }
-
         // There must be the same number of VCoreOptions as PerDatabaseMaximums
         if (VCoreOptions.Count != PerDatabaseMaximums.Count)
         {
@@ -126,7 +121,7 @@ public class AutoScalerConfiguration
         }
 
         // None of the numeric values should ever be negative.
-        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || LookBackSeconds < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
+        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
@@ -161,7 +156,8 @@ public class AutoScalerConfiguration
                $"HighInstanceCpuPercent: {HighInstanceCpuPercent}\n" +
                $"LowDataIoPercent: {LowDataIoPercent}\n" +
                $"HighDataIoPercent: {HighDataIoPercent}\n" +
-               $"LookBackSeconds: {LookBackSeconds}\n" +
+               $"LongWindowLookback: {LongWindowLookback}\n" +
+               $"ShortWindowLookback: {ShortWindowLookback}\n" +
                $"VCoreFloor: {VCoreFloor}\n" +
                $"VCoreCeiling: {VCoreCeiling}\n" +
                $"VCoreOptions: {string.Join(", ", VCoreOptions)}\n" +

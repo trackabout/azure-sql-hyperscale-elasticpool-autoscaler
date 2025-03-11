@@ -87,12 +87,9 @@ public class SqlRepository(ILogger<SqlRepository> logger,
 
     private async Task<IEnumerable<UsageInfo>> GetShortLongWindowUsageAsync(IEnumerable<(string DatabaseName, string ElasticPoolName)> metricDbsToQuery)
     {
-        const int longWindowSeconds = 30 * 60;  // 1800s = 30 minutes
-        const int shortWindowSeconds = 5 * 60;  // 300s = 5 minutes
-
         var sql = $"""
-        DECLARE @LongWindowStartTime DATETIME = DATEADD(SECOND, -{longWindowSeconds}, GETUTCDATE());
-        DECLARE @ShortWindowStartTime DATETIME = DATEADD(SECOND, -{shortWindowSeconds}, GETUTCDATE());
+        DECLARE @LongWindowStartTime DATETIME = DATEADD(SECOND, -{_config.LongWindowLookback}, GETUTCDATE());
+        DECLARE @ShortWindowStartTime DATETIME = DATEADD(SECOND, -{_config.ShortWindowLookback}, GETUTCDATE());
 
         WITH PoolStats AS (
         SELECT
