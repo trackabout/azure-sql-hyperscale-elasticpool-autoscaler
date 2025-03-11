@@ -32,6 +32,8 @@ public class AutoScalerConfiguration
     public bool IsDryRun { get; set; }
     public int MaxExpectedScalingTimeSeconds { get; }
     public int CoolDownPeriodSeconds { get; }
+    public bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
+    public string ManagedIdentityClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") ?? string.Empty;
 
     public AutoScalerConfiguration(IConfiguration configuration)
     {
