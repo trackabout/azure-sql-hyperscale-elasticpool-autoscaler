@@ -11,6 +11,7 @@ public class AutoScalerTests
     private readonly Mock<ISqlRepository> _sqlRepositoryMock;
     private readonly Mock<IErrorRecorder> _errorRecorderMock;
     private readonly Mock<IAzureResourceService> _azureResourceServiceMock;
+    private readonly Mock<ILogger<AutoScaler>> _loggerMock;
 
     public AutoScalerTests()
     {
@@ -56,12 +57,12 @@ public class AutoScalerTests
             .Build();
 
         _config = new AutoScalerConfiguration(configuration);
-        Mock<ILogger<AutoScaler>> loggerMock = new();
         _sqlRepositoryMock = new Mock<ISqlRepository>();
         _errorRecorderMock = new Mock<IErrorRecorder>();
         _azureResourceServiceMock = new Mock<IAzureResourceService>();
+        _loggerMock = new Mock<ILogger<AutoScaler>>();
 
-        _autoScaler = new AutoScaler(loggerMock.Object, _config, _sqlRepositoryMock.Object, _errorRecorderMock.Object, _azureResourceServiceMock.Object);
+        _autoScaler = new AutoScaler(_loggerMock.Object, _config, _sqlRepositoryMock.Object, _errorRecorderMock.Object, _azureResourceServiceMock.Object);
     }
 
     [Fact]
@@ -621,5 +622,137 @@ public class AutoScalerTests
         // Assert
         Assert.False(result);
         _azureResourceServiceMock.Verify(service => service.ScaleElasticPoolAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()), Times.Never);
+    }
+
+    // Write a test to check that an overridden floor is respected
+    [Fact]
+    public void GetNewPoolTarget_RespectsOverriddenFloor()
+    {
+        // Arrange
+        _config.VCoreFloor = 6;
+        _config.ElasticPools = new Dictionary<string, double?>
+        {
+            { "custom-floor-pool", 8 },
+            { "no-override-pool", null }
+        };
+        var usageInfo1 = new UsageInfo
+        {
+            ElasticPoolName = "custom-floor-pool",
+            ElasticPoolCpuLimit = 8,
+            // All metrics are 0 by default, so "low"
+        };
+        var usageInfo2 = new UsageInfo
+        {
+            ElasticPoolName = "no-override-pool",
+            ElasticPoolCpuLimit = 8,
+            // All metrics are 0 by default, so "low"
+        };
+        const double currentVCore = 8;
+
+        // Act
+        // Normally, this pool would drop to the floor of 6, but we've
+        // overridden the floor to 8, so it should stay at 8.
+        var result1 = _autoScaler.GetNewPoolTarget(usageInfo1, currentVCore);
+
+        // Assert
+        Assert.Equal(8, result1.VCore);
+
+        // This one should scale down from 8 to 6, as it has no override.
+        var result2 = _autoScaler.GetNewPoolTarget(usageInfo2, currentVCore);
+
+        // Assert
+        Assert.Equal(6, result2.VCore);
+    }
+
+    [Fact]
+    public async Task DoTheThing_PoolInTransition_ShouldNotScale()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+        _config.CoolDownPeriodSeconds = 600; // 10 minutes
+        _config.ElasticPools = new Dictionary<string, double?>
+        {
+            ["test-pool1"] = null,
+            ["test-pool2"] = null,
+            ["test-pool3"] = null
+        };
+
+        var loggerMock = new Mock<ILogger<SqlRepository>>();
+
+        // We create a partial mock of SqlRepository so the constructor’s code runs,
+        // but we override the SQL-based calls GetPoolsInTransitionAsync() and GetPoolsInCoolDown().
+        var sqlRepositoryMock = new Mock<SqlRepository>(loggerMock.Object, _config, _errorRecorderMock.Object)
+        {
+            CallBase = true
+        };
+
+        sqlRepositoryMock.Setup(x => x.GetPoolsInCoolDown())
+            .ReturnsAsync(new List<string>());
+
+        sqlRepositoryMock.Setup(x => x.GetPoolsInTransitionAsync())
+            .ReturnsAsync(new List<string> { "test-pool1" });
+
+        // Permissions are fine
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        // Test that calling GetPoolsToConsider does not include pools in cooldown.
+        // We want to run the actual GetPoolsToConsider method, so we call the base method.
+        sqlRepositoryMock.Setup(x => x.GetPoolsToConsider())
+            .CallBase();
+
+        // Act
+        var result = await sqlRepositoryMock.Object.GetPoolsToConsider();
+
+        // Assert
+        Assert.Equal(2, result.Count);
+        Assert.DoesNotContain("test-pool1", result);
+    }
+
+
+    [Fact]
+    public async Task DoTheThing_WithinCooldown_ShouldNotScale()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+        _config.CoolDownPeriodSeconds = 600; // 10 minutes
+        _config.ElasticPools = new Dictionary<string, double?> { ["test-pool1"] = null };
+
+        var loggerMock = new Mock<ILogger<SqlRepository>>();
+
+        // We create a partial mock of SqlRepository so the constructor’s code runs,
+        // but we override the SQL-based calls GetPoolsInTransitionAsync() and GetPoolsInCoolDown().
+        var sqlRepositoryMock = new Mock<SqlRepository>(loggerMock.Object, _config, _errorRecorderMock.Object)
+        {
+            CallBase = true
+        };
+
+        sqlRepositoryMock.Setup(x => x.GetPoolsInCoolDown())
+            .ReturnsAsync(new List<string> { "test-pool1" });
+
+        sqlRepositoryMock.Setup(x => x.GetPoolsInTransitionAsync())
+            .ReturnsAsync(new List<string>());
+
+        // The last scaling operation was 300 seconds ago
+        sqlRepositoryMock.Setup(repo => repo.GetLastScalingOperationsAsync())
+            .ReturnsAsync(new Dictionary<string, int>
+            {
+                { "test-pool1", 300 }
+            });
+
+        // Permissions are fine
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        // Test that calling GetPoolsToConsider does not include pools in cooldown.
+        // We want to run the actual GetPoolsToConsider method, so we call the base method.
+        sqlRepositoryMock.Setup(x => x.GetPoolsToConsider())
+            .CallBase();
+
+        // Act
+        var result = await sqlRepositoryMock.Object.GetPoolsToConsider();
+
+        // Assert
+        Assert.Empty(result);
     }
 }

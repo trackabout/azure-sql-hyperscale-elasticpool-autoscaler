@@ -8,13 +8,20 @@ using Polly;
 using Polly.Retry;
 
 namespace Azure.HyperScale.ElasticPool.AutoScaler;
-public class SqlRepository(ILogger<SqlRepository> logger,
-    AutoScalerConfiguration configuration,
-    IErrorRecorder errorRecorder) : ISqlRepository
+public class SqlRepository : ISqlRepository
 {
-    private readonly ILogger<SqlRepository> _logger = logger;
-    private readonly AutoScalerConfiguration _config = configuration;
-    private readonly IErrorRecorder _errorRecorder = errorRecorder;
+    private readonly ILogger<SqlRepository> _logger;
+    private readonly AutoScalerConfiguration _config;
+    private readonly IErrorRecorder _errorRecorder;
+
+    public SqlRepository(ILogger<SqlRepository> logger,
+        AutoScalerConfiguration configuration,
+        IErrorRecorder errorRecorder)
+    {
+        _logger = logger;
+        _config = configuration;
+        _errorRecorder = errorRecorder;
+    }
 
     private static string CreateSqlCompatibleList(List<string> poolsToConsider)
     {
@@ -166,7 +173,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// Retrieves the names of elastic pools that are currently in transition.
     /// </summary>
     /// <returns>A list of pools currently transitioning.</returns>
-    public async Task<IEnumerable<string>> GetPoolsInTransitionAsync()
+    public virtual async Task<IEnumerable<string>> GetPoolsInTransitionAsync()
     {
         var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
         // Ensure we're only looking at the most recent UPDATE ELASTIC POOL entry
@@ -243,7 +250,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// Rows in sys.dm_operation_status only stick around for about 30 minutes. But that's long enough for our purposes.
     /// </summary>
     /// <returns>A dictionary of elastic pool names and the number of seconds since their last scaling operation.</returns>
-    public async Task<Dictionary<string, int>?> GetLastScalingOperationsAsync()
+    public virtual async Task<Dictionary<string, int>?> GetLastScalingOperationsAsync()
     {
         var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
         var sql = $"""
@@ -328,7 +335,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// <summary>
     /// Returns a list of elastic pools currently within the cooldown period.
     /// </summary>
-    public async Task<IEnumerable<string>> GetPoolsInCoolDown()
+    public virtual async Task<IEnumerable<string>> GetPoolsInCoolDown()
     {
         // Remove from consideration any pools that completed a scaling operation within the last CoolDownPeriodSeconds.
 
@@ -353,7 +360,7 @@ public class SqlRepository(ILogger<SqlRepository> logger,
     /// from configuration and excluding pools in transition or in cool down.
     /// </summary>
     /// <returns>A list of pools to consider for scaling.</returns>
-    public async Task<List<string>> GetPoolsToConsider()
+    public virtual async Task<List<string>> GetPoolsToConsider()
     {
         var poolsToConsider = _config.ElasticPools.Keys.ToList();
 
