@@ -77,11 +77,20 @@ public class AutoScaler(
         return true;
     }
 
+    private string FormatUsageInfo(UsageInfo usageInfo)
+    {
+        return
+            $"\n{"Short Avg CPU %:",-21}{usageInfo.ShortAvgCpu,6:F2}%   {"Long Avg CPU %:",-21}{usageInfo.LongAvgCpu,6:F2}%   {"Low/High:",-10}{_config.LowCpuPercent,5:F1}% /{_config.HighCpuPercent,5:F1}%" +
+            $"\n{"Short Instance CPU %:",-21}{usageInfo.ShortInstanceCpu,6:F2}%   {"Long Instance CPU %:",-21}{usageInfo.LongInstanceCpu,6:F2}%   {"Low/High:",-10}{_config.LowInstanceCpuPercent,5:F1}% /{_config.HighInstanceCpuPercent,5:F1}%" +
+            $"\n{"Short Workers %:",-21}{usageInfo.ShortWorkersPercent,6:F2}%   {"Long Workers %:",-21}{usageInfo.LongWorkersPercent,6:F2}%   {"Low/High:",-10}{_config.LowWorkersPercent,5:F1}% /{_config.HighWorkersPercent,5:F1}%" +
+            $"\n{"Short Data IO %:",-21}{usageInfo.ShortDataIo,6:F2}%   {"Long Data IO %:",-21}{usageInfo.LongDataIo,6:F2}%   {"Low/High:",-10}{_config.LowDataIoPercent,5:F1}% /{_config.HighDataIoPercent,5:F1}%";
+    }
+
     private async Task EvaluateMetrics(UsageInfo usageInfo)
     {
         var serverAndPool = $"{_config.SqlInstanceName}.{usageInfo.ElasticPoolName}";
-        _logger.LogInformation($"\n                 --=> Evaluating Pool {serverAndPool} <=--");
-        _logger.LogInformation(usageInfo.ToString());
+        _logger.LogInformation($"\n         --=> Evaluating Pool {serverAndPool} @ {usageInfo.ElasticPoolCpuLimit} vCore <=--");
+        _logger.LogInformation(FormatUsageInfo(usageInfo));
 
         var currentVCore = (double)usageInfo.ElasticPoolCpuLimit;
 

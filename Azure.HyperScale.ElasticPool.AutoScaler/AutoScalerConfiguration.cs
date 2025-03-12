@@ -53,7 +53,7 @@ public class AutoScalerConfiguration
         LowInstanceCpuPercent = configuration.GetValue<decimal>("LowInstanceCpuPercent");
         HighInstanceCpuPercent = configuration.GetValue<decimal>("HighInstanceCpuPercent");
 
-        LongWindowLookback = configuration.GetValue<int>("LongWindowLookback", 1800);
+        LongWindowLookback = configuration.GetValue<int>("LongWindowLookback", 900);
         ShortWindowLookback = configuration.GetValue<int>("ShortWindowLookback", 300);
 
         VCoreFloor = configuration.GetValue<double>("VCoreFloor");

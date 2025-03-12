@@ -37,7 +37,7 @@ public class AutoScalerTests
             {"LowDataIoPercent", "10"},
             {"HighDataIoPercent", "80"},
 
-            {"LongWindowLookback", "1800"},
+            {"LongWindowLookback", "900"},
             {"ShortWindowLookback", "300"},
 
             {"VCoreFloor", "6"},
