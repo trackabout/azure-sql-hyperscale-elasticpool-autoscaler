@@ -279,6 +279,21 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 
 **IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value *outside the bounds of the floor and ceiling settings*, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
 
+## Possible Enhancements
+
+### Add a "step size" or "gradient reaction"
+
+Currently, we do single-step scaling. This could cause a slower reaction than desirable if CPU is massively over threshold. Or, it could result in small, frequent steps if we cross the threshold by a small margin.
+
+A more refined approach might be to scale multiple steps if we are far beyond specific thresholds, or scale just one step if we're barely over.
+
+For example:
+
+- If (longAvgCPU > HighCPUPercent × 1.3) or (shortAvgCPU > HighCPUPercent × 1.5) — we're REALLY beyond threshold. Jump up by 2 steps.
+- If _just_ above threshold, move only 1 step.
+
+Likewise, for downward scaling: • If we're 30% below threshold for a significant portion, maybe skip multiple steps downward.
+
 ## Enjoy!
 
 Larry Silverman\
