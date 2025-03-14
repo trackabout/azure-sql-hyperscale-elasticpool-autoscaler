@@ -292,7 +292,15 @@ For example:
 - If (longAvgCPU > HighCPUPercent × 1.3) or (shortAvgCPU > HighCPUPercent × 1.5) — we're REALLY beyond threshold. Jump up by 2 steps.
 - If _just_ above threshold, move only 1 step.
 
-Likewise, for downward scaling: • If we're 30% below threshold for a significant portion, maybe skip multiple steps downward.
+Likewise, for downward scaling, if we're 30% below threshold for a significant portion, maybe skip multiple steps downward.
+
+### Consider exponential weighted averages
+
+Not sure if this is needed just yet, but there might be cause to more heavily weight more recent readings over older readings.
+
+### Consider intedependence between metrics
+
+It's often the case that if CPU gets too bogged down, it won't be long before Workers % starts to climb. The same can be said for Avg CPU % and SQL Instance CPU %. These metrics can be inter-related. Perhaps there is some way to detect when one is causing a lagging rise in another, and scale more aggressively.
 
 ## Enjoy!
 
