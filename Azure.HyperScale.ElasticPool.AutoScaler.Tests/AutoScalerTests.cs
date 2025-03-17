@@ -48,8 +48,6 @@ public class AutoScalerTests
 
             {"MaxExpectedScalingTimeSeconds", "300"}, // 5m
             {"CoolDownPeriodSeconds", "600"}, // 10m
-
-            {"IsSentryLoggingEnabled", "false"}  // Sensible default
         };
 
         var configuration = new ConfigurationBuilder()

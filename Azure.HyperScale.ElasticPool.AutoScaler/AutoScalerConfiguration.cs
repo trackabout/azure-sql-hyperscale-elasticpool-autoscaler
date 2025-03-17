@@ -26,6 +26,7 @@ public class AutoScalerConfiguration
     public List<double> VCoreOptions { get; }
     public List<double> PerDatabaseMaximums { get; }
     public bool IsSentryLoggingEnabled { get; }
+    public string SentryDsn { get; }
     public int RetryCount { get; }
     public int RetryInterval { get; }
     public bool IsDryRun { get; set; }
@@ -69,6 +70,10 @@ public class AutoScalerConfiguration
         RetryInterval = configuration.GetValue<int>("RetryInterval", 2);
 
         IsDryRun = configuration.GetValue<bool>("IsDryRun");
+
+        SentryDsn = configuration.GetValue<string>("SentryDsn") ?? string.Empty;
+
+        IsSentryLoggingEnabled = !string.IsNullOrEmpty(SentryDsn);
 
         MaxExpectedScalingTimeSeconds = configuration.GetValue<int>("MaxExpectedScalingTimeSeconds");
         CoolDownPeriodSeconds = configuration.GetValue<int>("CoolDownPeriodSeconds");
@@ -126,7 +131,7 @@ public class AutoScalerConfiguration
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }
 
-        IsSentryLoggingEnabled = configuration.GetValue<bool>("IsSentryLoggingEnabled");
+
 
         // LongWindowLookback must be greater than ShortWindowLookback
         if (LongWindowLookback <= ShortWindowLookback)
@@ -181,6 +186,7 @@ public class AutoScalerConfiguration
                $"VCoreOptions: {string.Join(", ", VCoreOptions)}\n" +
                $"PerDatabaseMaximums: {string.Join(", ", PerDatabaseMaximums)}\n" +
                $"IsSentryLoggingEnabled: {IsSentryLoggingEnabled}\n" +
+               $"SentryDsn: {SentryDsn}\n" +
                $"RetryCount: {RetryCount}\n" +
                $"RetryInterval: {RetryInterval}\n" +
                $"IsDryRun: {IsDryRun}\n" +

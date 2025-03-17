@@ -6,9 +6,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Sentry.Azure.Functions.Worker;
 
-var isSentryLoggingEnabled = bool.TryParse(Environment.GetEnvironmentVariable("IsSentryLoggingEnabled"), out var parsedFlag)
-    && parsedFlag;
 var sentryDsn = Environment.GetEnvironmentVariable("SentryDsn");
+var isSentryLoggingEnabled = !string.IsNullOrEmpty(sentryDsn);
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication()

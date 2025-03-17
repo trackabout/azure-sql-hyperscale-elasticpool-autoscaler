@@ -201,8 +201,7 @@ The following low and high thresholds control scaling.
 
 We use https://sentry.io, you may not.
 
-- **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false.
-- **SentryDsn**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true.
+- **SentryDsn**: Specifies the Sentry Dsn. If not set, Sentry is not used.
 
 ### Try Run
 
