@@ -32,7 +32,6 @@ public class ConfigurationTests
             {"PerDatabaseMaximums", "2,4,6,6,8,10,12,14,14,18,24,32,40,40,80"},
             {"LongWindowSeconds", "1800"},
             {"ShortWindowSeconds", "300"},
-            {"IsSentryLoggingEnabled", "false"},
             {"RetryCount", "3"},
             {"RetryInterval", "5"},
             {"IsDryRun", "false"},
