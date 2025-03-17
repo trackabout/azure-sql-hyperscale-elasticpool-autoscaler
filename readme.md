@@ -65,6 +65,11 @@ In Summary:
 - If **_any_** of the 4 metric averages for **_both_** the long window and the short window are at or above the high threshold of a specific metric → scale up.
 - If **_all_** of the 4 metric averages for **_both_** the long window and the short window are at or below the low threshold → scale down.
 
+## Logic Flowchart
+
+<img src="docs/logic-flowchart.svg" width=800 alt="AutoScaler Logic Flowchart" />
+
+
 ## Disclaimer
 
 Azure Elastic Pools can incur **VERY HIGH COSTS**.
