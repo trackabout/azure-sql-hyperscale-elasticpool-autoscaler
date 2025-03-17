@@ -1,0 +1,29 @@
+---
+config:
+  theme: neutral
+---
+flowchart TD
+    A[Start] --> B[Check Permissions]
+    B -->|Permissions Denied| Z[Exit]
+    B -->|Permissions Granted| C{Get Pools to Consider:<br/>Exclude Pools in Transition<br/>or Recently Scaled}
+    C -->|No Pools| Z[Exit]
+    C -->|Pools Found| D[Sample Pool Metrics]
+    D --> E[Evaluate Usage<br/>Short & Long Windows]
+    E --> F{Scaling Action<br/>Threshold Checks}
+    F -->|All Low| DOWN[Scale Down<br/>Next Lower vCore<br/>Respect Floor/Ceiling]
+    F -->|Any High| UP[Scale Up<br/>Next Higher vCore<br/>Respect Floor/Ceiling]
+    F -->|In the Middle| HOLD[Hold<br/>Do Not Scale]
+
+    DOWN --> G{IsDryRun?}
+    UP --> G
+    HOLD --> NOOP[Do Nothing]
+
+    G -->|Yes| NOOP
+    G -->|No| SCALE[ScaleElasticPool<br/>+ Write to Monitor Table]
+
+    NOOP --> NEXT[Check Next Pool]
+    SCALE --> NEXT
+
+    NEXT -->|More Pools| D
+    NEXT -->|No More Pools| Z[End]
+    Z[End]

@@ -3,9 +3,11 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Sentry.Azure.Functions.Worker;
 
-var isSentryLoggingEnabled = Convert.ToBoolean(Environment.GetEnvironmentVariable("IsSentryLoggingEnabled"));
+var isSentryLoggingEnabled = bool.TryParse(Environment.GetEnvironmentVariable("IsSentryLoggingEnabled"), out var parsedFlag)
+    && parsedFlag;
 var sentryDsn = Environment.GetEnvironmentVariable("SentryDsn");
 
 var host = new HostBuilder()
@@ -22,7 +24,8 @@ var host = new HostBuilder()
             });
         }
     })
-    .ConfigureServices(services => {
+    .ConfigureServices(services =>
+    {
         services.AddApplicationInsightsTelemetryWorkerService();
         services.ConfigureFunctionsApplicationInsights();
         services.AddLogging();
@@ -31,9 +34,29 @@ var host = new HostBuilder()
             var configuration = sp.GetRequiredService<IConfiguration>();
             return new AutoScalerConfiguration(configuration);
         });
-        services.AddTransient<Azure.HyperScale.ElasticPool.AutoScaler.AutoScaler>();
+        services.AddSingleton<IErrorRecorder, ErrorRecorder>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<ErrorRecorder>>();
+            var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
+            return new ErrorRecorder(logger, autoScalerConfig);
+        });
+        services.AddSingleton<ISqlRepository, SqlRepository>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<SqlRepository>>();
+            var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
+            var errorRecorder = sp.GetRequiredService<IErrorRecorder>();
+            return new SqlRepository(logger, autoScalerConfig, errorRecorder);
+        });
+        services.AddSingleton<IAzureResourceService, AzureResourceService>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<AzureResourceService>>();
+            var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
+            var errorRecorder = sp.GetRequiredService<IErrorRecorder>();
+            var sqlRepository = sp.GetRequiredService<ISqlRepository>();
+            return new AzureResourceService(autoScalerConfig, logger, errorRecorder, sqlRepository);
+        });
+        services.AddTransient<AutoScaler>();
     })
     .Build();
 
 host.Run();
-

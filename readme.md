@@ -1,16 +1,14 @@
-# Azure SQL Hyperscale Elastic Pool Autoscaler
+# Azure SQL Hyperscale Elastic Pool AutoScaler
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-## About
+## Intelligent Scaling with Azure SQL Hyperscale Elastic Pools
 
-[Azure SQL Database Hyperscale elastic pools](https://learn.microsoft.com/en-us/azure/azure-sql/database/hyperscale-elastic-pool-overview) became [generally available (GA) on September 12, 2024](https://techcommunity.microsoft.com/blog/azuresqlblog/elastic-pools-for-azure-sql-database-hyperscale-now-generally-available/4242658).
+Managing database performance and cost at scale is a challenge for any SaaS business. At TrackAbout, Inc. (a Datacor company) we provide a SaaS platform for tracking reusable, returnable containers serving industries like chemicals and packaged gas (oxygen, nitrogen, CO2, acetylene, etc.). With 400+ customers, each with their own SQL database, optimizing infrastructure is critical.
 
-Unfortunately, there aren't built-in features to scale pools up and down based on load. Since the ability to rapidly scale is a signature feature of Hyperscale, and one that promises significant cost savings over traditional elastic pools, we in the engineering team at [TrackAbout](https://corp.trackabout.com) were reluctant to migrate.
+When hyperscale elastic pools were announced, we saw an opportunity. Hyperscale offered the flexibility to scale rapidly, making it a better fit for our largest, most demanding databases—both in cost and performance. But we quickly discovered a key limitation: _Microsoft didn’t provide built-in autoscaling for Hyperscale elastic pools_.
 
-Until now.
-
-In this repo, we offer our implementation of an automatic scaler, AutoScaler, for Azure SQL DB Hyperscale Elastic Pools using an Azure Function.
+In this repo, we offer our implementation of an automatic scaler, AutoScaler, for Azure SQL DB Hyperscale Elastic Pools.
 
 A single instance of AutoScaler can manage *multiple* elastic pools within a single Azure SQL Server.
 
@@ -18,23 +16,59 @@ To manage multiple Azure SQL Servers, you can run multiple instances of the Auto
 
 Scaling decisions are made based on looking back at historical elastic pool metrics provided by the `sys.dm_elastic_pool_resource_stats` view within a database inside a Hyperscale pool.
 
-We look at four key metrics:
+We scale based on monitoring four key metrics:
 
 - Average CPU Percentage
-- Average Instance CPU Percentage
-- Worker Percentage
-- Data IO Percentage
+- Average SQL Instance CPU Percentage
+- Average Worker Percentage
+- Average Data IO Percentage
 
-In our experience at TrackAbout operating Azure SQL elastic pools since 2016, these are the four most important CPU-related metrics to monitor for scaling operations within an elastic pool.
+For our workload, these are the four most important metrics to monitor for scaling operations within an elastic pool. Depending on your workload, you might wish to extend the function to monitor other metrics, such as Log IO Percentage.
 
 Through configuration, you can control:
 
 - High and low threshold settings for each metric
-- How far back in time to look at performance metrics
-- How many low or high thresholds must be exceeded to trigger scaling over that time period
+- How far back in time to look at performance metrics (we use a long lookback window and a short lookback window)
 - Floor and ceiling vCore levels to keep your pool within desired boundaries
 
-We use a hysteresis-based approach to prevent rapid, repetitive changes (thrashing) in response to fluctuating metrics. Traditionally, this kind of approach involves delaying a scaling decision by requiring that metrics remain above or below certain thresholds for a sustained period.
+## Scaling Logic
+
+Our solution applies a hysteresis-based approach to prevent rapid, repetitive changes (thrashing) in response to fluctuating metrics. This kind of approach involves delaying a scaling decision by requiring that metrics remain above or below certain thresholds for a sustained period.
+
+We measure averages over two sliding windows, short and long, so that short bursts don’t cause big changes, but extended load does.
+
+The short window (e.g. 5 minutes) is used to detect sudden spikes or surges.
+
+The long window (e.g. 15–30 minutes) is used to confirm sustained load.
+
+For each execution of the function, we calculate:
+
+- shortAvgCPU, longAvgCPU
+- shortWorkers, longWorkers
+- shortInstCPU, longInstCPU
+- shortDataIO, longDataIO
+
+When deciding to scale up:
+
+- If `shortAvgCPU` > `HighCPUPercent` or `shortWorkers` > `HighWorkersPercent` (etc.) AND the `longAvgCPU` also exceeds threshold, that means a real sustained high usage → scale up.
+- If only the short window is high but the long window is comfortable, we wait.
+
+When deciding to scale down:
+
+- If both the short and long windows remain below the "Low" thresholds, we reduce capacity.
+- If short is below "Low" but long is borderline, we hold.
+
+This double-check on short+long windows helps increase confidence about big changes without ignoring real bursts.
+
+In Summary:
+
+- If **_any_** of the 4 metric averages for **_both_** the long window and the short window are at or above the high threshold of a specific metric → scale up.
+- If **_all_** of the 4 metric averages for **_both_** the long window and the short window are at or below the low threshold → scale down.
+
+## Logic Flowchart
+
+<img src="docs/logic-flowchart.svg" width=800 alt="AutoScaler Logic Flowchart" />
+
 
 ## Disclaimer
 
@@ -42,7 +76,7 @@ Azure Elastic Pools can incur **VERY HIGH COSTS**.
 
 **YOU** are solely responsible for your own costs should you choose to use this code.
 
-*We accept no responsibility for costs you incur using this code.*
+_We accept no responsibility for costs you incur using this code._
 
 We **strongly** recommend you study this project and its unit tests and run your own load tests to ensure this autoscaler behaves in a manner you are comfortable with.
 
@@ -57,13 +91,13 @@ The original project was intended for use with standalone Hyperscale SQL databas
 
 ## Identities and Permissions
 
-Managed Identities for SQL connections is supported. You must first enable the system-managed identity for your Azure Function regardless of whether you are using a user-assigned MI. Otherwise, we have found the user-assigned MI will not work. Be sure to set the `AZURE_CLIENT_ID` environment variable equal to the chosen identity's ObjectId.
+Azure Managed Identities for SQL connections is supported. You must first enable the system-managed identity for your Azure Function regardless of whether you are using a user-assigned MI. Otherwise, we have found the user-assigned MI will not work. Be sure to set the `AZURE_CLIENT_ID` environment variable equal to the chosen identity's ObjectId.
 
 In order for the managed identity to be able to query the necessary tables in the `master` database, it must be set as an Admin in the Azure SQL Server's settings. You may create an AAD group and place this (and other) identities into this group.
 
 Of course, basic SQL User (username/password style) connection strings also work.
 
-### Permissions in the `master` database
+### Required permissions in the `master` database
 
 The ability to query the `master` database of the Azure SQL Server is required. The identity must be able to query:
 
@@ -71,17 +105,17 @@ The ability to query the `master` database of the Azure SQL Server is required. 
 - `sys.database_service_objectives`
 - `sys.dm_operation_status`
 
-### Permissions within pool databases
+### Required permissions within pool databases
 
-The AutoScaler will query performance metrics within individual databases in the pool by reading the view `sys.dm_elastic_pool_resource_stats`. To get the most timely metrics, you must query into a pool database. While metrics are available in `master`, it is a known limitation that those metrics can be significantly delayed. We've seen them delayed by over 5 minutes.
+The AutoScaler will query performance metrics within individual databases in the pool by reading the view `sys.dm_elastic_pool_resource_stats`. To get the most timely metrics, you must query within a pool database. While the same view is available in `master`, it is a known limitation that metics from `master` are delayed. We've seen them delayed by over 5 minutes.
 
-For our implementation, we decided to pick a pool database *at random* to query for metrics measurement each time the AutoScaler executes.
+For our implementation, we decided to pick a pool database _at random_ to query for metrics measurement each time the AutoScaler executes.
 
 We chose this because:
 
-1. Databases come and go. We did not want our autoscaler to break or to have to reconfigure the AutoScaler if our chosen target database was dropped.
+1. Databases come and go. We did not want AutoScaler to break or require reconfiguration if a database was dropped.
 2. It seemed unfair to keep hitting the same database every iteration for metrics.
-3. We could have chosen to add a new, empty database for querying metrics. However, Hyperscale Elastic Pools support only 25 databases per pool. That's not much, and to sacrifice one simply for metrics querying felt wasteful.
+3. We could have chosen to add a new, empty database for querying metrics. However, Hyperscale Elastic Pools support only 25 databases per pool. That's not much, and to sacrifice one simply for metrics querying is wasteful.
 
 Therefore we chose the random method, which should never break and never require reconfiguring.
 
@@ -89,19 +123,20 @@ You might, however, wish to modify the AutoScaler to support a single named data
 
 ### hs.AutoScalerMonitor Table
 
-If you choose to log to this table, the managed identity will need INSERT permissions. If you leave the connection string blank, no attempt will be made.
+If you choose to log scaling changes to this table, the managed identity will need INSERT permissions. Leave the connection string blank to disable this feature.
 
 ### Elastic Pool Scaling Permissions
 
-The managed identity must have the necessary permission to invoke scaling operations on your elastic pools. To scale an elastic pool, Azure RBAC permissions are needed, specifically the Contributor, SQL DB Contributor role, or SQL Server Contributor Azure RBAC roles. For more information, see [Azure RBAC built-in roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles).
+The Azure function's identity must have the necessary permission to invoke scaling operations on your elastic pools. To scale an elastic pool, Azure RBAC permissions are needed, specifically the Contributor, SQL DB Contributor role, or SQL Server Contributor Azure RBAC roles. For more information, see [Azure RBAC built-in roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles).
 
-If using a user assigned managed identity, it's important to create an app setting called `AZURE_CLIENT_ID` and set it to the Client ID of the managed identity you want to use for the function. Since a function app can have more than one managed identity assigned to it, this tells the SDK which identity to use by default.
+If using a user-assigned managed identity, add a Function environment variable named `AZURE_CLIENT_ID` and set it to the ObjectId of the managed identity you want to use for the function. Since a function app can have more than one managed identity assigned to it, this tells the SDK which identity to use.
 
-## Deployment Guidance
 
-### Azure SQL
+## Logging Scaling Actions
 
-We store historical metrics in a `hs.AutoScalerMonitor` table in the SQL database of your choice. This database does not have to live in a Hyperscale Elastic Pool, or any elastic pool.
+Elastic pool scaling actions can be found in Azure Activity Log.
+
+We chose to provide an option to also write scaling operations taken into a `hs.AutoScalerMonitor` table in the SQL database of your choice. This database does not have to live in a Hyperscale Elastic Pool, or any elastic pool.
 
 The connection string is configured in settings.
 
@@ -109,92 +144,69 @@ If you do not wish to log to this table, set this connection string to an empty 
 
 The script for creating this table is in the `./SQL` folder.
 
-The data logged is useful for understanding how and why the autoscaler acted.
+The data logged is useful for understanding how and why the autoscaler acted. It persists the measured metrics at the time of the scaling decision in JSON.
 
-### Logging
+## General Logging
 
 The AutoScaler logs just about everything it does.
 
 Logging is sent to [Azure Application Insights](https://docs.microsoft.com/en-us/azure/azure-functions/functions-monitoring#log-custom-telemetry-in-c-functions), so actions can be monitored from an Azure Portal dashboard or alerted using Azure Monitor.
 
-### Azure Function
+## Deployment of the Azure Function
 
-Deploy the solution to Azure and set up the application settings using the contents of `local.settings.example.json` as a guide.
+Deploy the functino to Azure and set up the function's application settings using the contents of `local.settings.example.json` as a guide.
 
-#### Connection Strings
+### Connection Strings
 
 - **MasterSqlConnection**: Connection string to the Azure SQL Server master database.
 - **PoolDbConnection**: This is a templatized connection string used to connect to one of the databases in the Elastic Pool. A database in each pool will be chosen at random each time the AutoScaler runs. The AutoScaler must connect to a database within the pool in order to sample the performance metrics. This is because the most rapidly-updated source of the performance metrics is gettable only within a pool database, not the `master` database.
 - **MetricsSQLConnection**: Connection string to the Azure SQL Database containing the `hs.AutoScalerMonitor` table. This database can live anywhere you like. The user must have write access to the `hs.AutoScalerMonitor` table. Leave it blank if you don't want to use it.
 
-#### Settings
+### Azure Resource Identifiers
 
 - **SubscriptionId**: The Azure subscription ID where the server lives. Needed for scaling operations.
 - **SqlInstanceName**: Name of the Azure SQL Server instance where the Elastic Pools are hosted. Needed for scaling operations.
 - **ResourceGroupName**: Name of the resource group where the Azure SQL Server is hosted. Needed for scaling operations.
 - **ElasticPools**: Comma separated list of Elastic Pools to monitor. You may set a custom VCoreFloor for any given pool by adding a colon and the vCore, like `"PoolName1:8,PoolName2"`. In this case, PoolName1 will be kept at a floor of 8 vCore while PoolName2 will use the global floor.
-- **LowCpuPercent**, **HighCpuPercent**: Average CPU Percent low and high thresholds.
-- **LowWorkersPercent**, **HighWorkersPercent**: Workers Percent low and high thresholds.
-- **LowInstanceCpuPercent**, **HighInstanceCpuPercent**: SQL Instance CPU Percent low and high thresholds.
-- **LowDataIoPercent**, **HighDataIoPercent**: Data IO Percent low and high thresholds.
-- **LookBackSeconds**, **LowCountThreshold**, **HighCountThreshold**: Hysteresis-controlling settings. More on these below.
-- **VCoreFloor**, **VCoreCeiling**: The minimum and maximum number of cores to use as bounds for scaling up and down. You'll probably always set VCoreFloor to the minimum vCore setting possible. You may wish to set a hard ceiling to control costs.
-- **VCoreOptions**: The list of available vCore options for the type of Hyperscale Elastic Pool being used. Copied from Azure documentation.
-- **PerDatabaseMaximums**: Controls the per-database maximum vCore setting for the pool at each step. Should map 1:1 with VCoreOptions.
-- **RetryCount**: When making a SQL connection, the number of retries.
-- **RetryInterval**: When making a SQL connection, the time between retries.
+
+### Low and High Thresholds
+
+The following low and high thresholds control scaling.
+
+- **LowCpuPercent**, **HighCpuPercent**
+- **LowWorkersPercent**, **HighWorkersPercent**
+- **LowInstanceCpuPercent**, **HighInstanceCpuPercent**
+- **LowDataIoPercent**, **HighDataIoPercent**
+
+### Scaling Management
+
+- **LongWindowLookback**: `900` Size of the long time window looking back at metric averages.
+- **ShortWindowLookup**: `300` Size of the short time window looking back at metric averages.
+- **MaxExpectedScalingTimeSeconds**: The longest we expect a scaling operation to take. If in-process scaling operations take longer than this, `WARNING` log lines will be written. You can create Azure Monitor Alert Rules to alert on this condition.
+- **CoolDownPeriodSeconds**: Microsoft recommends waiting 5-10 minutes (300-600 seconds) before issuing another scaling operation against the same elastic pool. We call this the cool down period.
+
+### Elastic Pool Settings
+
+- **VCoreFloor**, **VCoreCeiling**: The minimum and maximum number of cores to use as bounds for scaling up and down. You may wish to set a hard ceiling to control costs.
+- **VCoreOptions**: `"4,6,8..."` The vCore steps you wish to make available for up- and down-scaling.
+- **PerDatabaseMaximums**: `"2,4,6..."` Controls the per-database maximum vCore setting for the pool at each step of VCoreOptions. Must map 1:1 with VCoreOptions.
+
+
+### SQL Connection Resiliency Settings
+
+- **RetryCount**: When attempting to making a SQL connection, the number of retries.
+- **RetryInterval**: If a SQL command is interrupted, indicates the number of seconds to use for an exponential back-off delay before retry.
+
+### Sentry
+
+We use https://sentry.io, you may not.
+
 - **IsSentryLoggingEnabled**: Specifies whether the Sentry application monitoring platform is being used for logging errors. Supported values are true and false.
 - **SentryDsn**: Specifies the Sentry Dsn. Required if IsSentryLoggingEnabled is set to true.
-- **IsDryRun**: Will not scale, only logs what it would do.
 
-## Hysteresis Configuration
+### Try Run
 
-The Hyperscale elastic pool environment generally posts new performance metrics every 15 seconds or so. That is why this AutoScaler is initially set to run every 15 seconds. You will want to set parameters that provide a balance between responsiveness and stability. Here are some recommendations based on the metrics frequency:
-
-### 1. **LookBackSeconds**
-
-**Recommended Range**: 900–1800 seconds (15–30 minutes). Since metrics are generated every 15 seconds, this window will yield 60–120 data points in 15–30 minutes.
-**Maximum**: 2500. In our experience, there are only ever 128 metrics stored, and the range is somewhere between 2528 and 2625 seconds. We'll use 2500 as a default maximum.
-
-**Rationale**: A 15- to 30-minute lookback window is usually sufficient to capture significant trends in usage without being overly reactive to short spikes or dips.
-
-Shorter windows (e.g., 5–10 minutes) would likely capture transient behavior rather than a consistent trend, potentially leading to frequent, unnecessary scaling actions.
-
-### 2. **HighCountThreshold**
-
-**Recommended Range**: 5–10
-
-With a 15-minute lookback window (900 seconds), a threshold of 5 would mean you need about 75 seconds (5 readings at 15 seconds each) of high utilization to trigger a scaling up decision.
-
-If you set it at 10, then you require 150 seconds (2.5 minutes) of high utilization.
-
-**Rationale**:
-This threshold should be high enough that transient usage spikes don’t cause scaling up but low enough to ensure responsiveness to genuine demand increases.
-
-For critical workloads, you might opt for a lower threshold (closer to 5), while for less urgent workloads, you could set it closer to 10.
-
-### 3. **LowCountThreshold**
-
-**Recommended Range**: 10–15
-
-With a lookback window of 900 seconds, a threshold of 10 would require around 2m30s of consistently low utilization to scale down.
-
-A threshold of 15 requires around 225 seconds (3m45s).
-
-**Rationale**:
-This threshold should require more sustained low utilization than the high threshold to avoid rapid downscaling that could impair performance if usage temporarily increases again.
-
-By setting a higher threshold here, you add a degree of stability, helping to ensure that the system is genuinely underutilized before scaling down.
-
-### Summary
-
-With these settings:
-
-- **LookBackSeconds**: 900–1800 (15–30 minutes)
-- **HighCountThreshold**: 5–10
-- **LowCountThreshold**: 10–15
-
-This approach allows for stable and responsive scaling while preventing frequent fluctuations due to transient metrics. You may want to test these configurations in a staging environment, adjusting them based on actual workload patterns.
+- **IsDryRun**: If True, AutoScaler will not scale. It will log what it would have done.
 
 ## Unit Tests
 
@@ -240,6 +252,10 @@ The writing of scaling actions to the `hs.AutoScalerMonitor` is optional, and th
 
 ## Notes and Observations
 
+### Skipping Pools in Cool-Down Period
+
+Microsoft recommends delaying scaling for at least 10 minutes after a pool was last scaled. We have ~42 minutes of operation history available in the sys views. We skip evaluation of pools that were transitioned within the cool-down period.
+
 ### Skipping Pools In Transition
 
 While a scaling operation is taking place for a given pool, we check in the `master` database against [`sys.dm_operation_status`](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-operation-status-azure-sql-database?view=azuresqldb-current). If a pool is in any of the transitional states (Pending, In Progress, Cancel in progress), we do nothing else with that pool during this execution. Other pools in the list will still be handled.
@@ -248,7 +264,7 @@ While a scaling operation is taking place for a given pool, we check in the `mas
 
 For about a minute following a scale-up or scale-down operation, the AutoScaler will be unable to read any metrics. The metrics have been cleared, and need to start accumulating again.
 
-A positive implication of this is that when the AutoScaler runs after a transition, it cannot see any of the metrics from before. Thus it cannot be "fooled" into acting based on the earlier state.
+A positive implication of this is that when the AutoScaler runs after a transition, it cannot see any of the metrics from before. Thus it cannot be "fooled" into acting based on state prior to the last scaling action.
 
 ### Connection Resiliency
 
@@ -267,6 +283,29 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 ### Clamping to Ceiling and Floor
 
 **IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value *outside the bounds of the floor and ceiling settings*, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
+
+## Possible Enhancements
+
+### Add a "step size" or "gradient reaction"
+
+Currently, we do single-step scaling. This could cause a slower reaction than desirable if CPU is massively over threshold. Or, it could result in small, frequent steps if we cross the threshold by a small margin.
+
+A more refined approach might be to scale multiple steps if we are far beyond specific thresholds, or scale just one step if we're barely over.
+
+For example:
+
+- If (longAvgCPU > HighCPUPercent × 1.3) or (shortAvgCPU > HighCPUPercent × 1.5) — we're REALLY beyond threshold. Jump up by 2 steps.
+- If _just_ above threshold, move only 1 step.
+
+Likewise, for downward scaling, if we're 30% below threshold for a significant portion, maybe skip multiple steps downward.
+
+### Consider exponential weighted averages
+
+Not sure if this is needed just yet, but there might be cause to more heavily weight more recent readings over older readings.
+
+### Consider intedependence between metrics
+
+It's often the case that if CPU gets too bogged down, it won't be long before Workers % starts to climb. The same can be said for Avg CPU % and SQL Instance CPU %. These metrics can be inter-related. Perhaps there is some way to detect when one is causing a lagging rise in another, and scale more aggressively.
 
 ## Enjoy!
 
