@@ -105,8 +105,7 @@ public class SqlRepository : ISqlRepository
             avg_cpu_percent,
             max_worker_percent,
             avg_instance_cpu_percent,
-            avg_data_io_percent,
-            ROW_NUMBER() OVER (ORDER BY end_time DESC) AS RowNum
+            avg_data_io_percent
         FROM
             sys.dm_elastic_pool_resource_stats
         WHERE
