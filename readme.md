@@ -197,13 +197,13 @@ The following low and high thresholds control scaling.
 - **RetryCount**: When attempting to making a SQL connection, the number of retries.
 - **RetryInterval**: If a SQL command is interrupted, indicates the number of seconds to use for an exponential back-off delay before retry.
 
-### Sentry
+### Sentry Application Monitoring
 
 We use https://sentry.io, you may not.
 
 - **SentryDsn**: Specifies the Sentry Dsn. If not set, Sentry is not used.
 
-### Try Run
+### Dry Run Mode
 
 - **IsDryRun**: If True, AutoScaler will not scale. It will log what it would have done.
 
