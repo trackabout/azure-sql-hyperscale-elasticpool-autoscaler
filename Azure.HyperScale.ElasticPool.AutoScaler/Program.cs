@@ -33,6 +33,7 @@ var host = new HostBuilder()
             var configuration = sp.GetRequiredService<IConfiguration>();
             return new AutoScalerConfiguration(configuration);
         });
+        services.AddSingleton<IAutoScalerConfiguration>(sp => sp.GetRequiredService<AutoScalerConfiguration>());
         services.AddSingleton<IErrorRecorder, ErrorRecorder>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<ErrorRecorder>>();
