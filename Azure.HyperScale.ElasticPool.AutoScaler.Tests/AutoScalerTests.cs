@@ -76,7 +76,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -93,7 +93,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -110,7 +110,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(14, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(10, result.PerDbMaxCapacity);
     }
 
@@ -127,7 +127,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(14, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(10, result.PerDbMaxCapacity);
     }
 
@@ -144,7 +144,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -161,7 +161,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -178,7 +178,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(14, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(10, result.PerDbMaxCapacity);
     }
 
@@ -201,7 +201,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(14, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(10, result.PerDbMaxCapacity);
     }
 
@@ -247,7 +247,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(8, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(6, result.PerDbMaxCapacity);
     }
 
@@ -272,7 +272,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(12, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(8, result.PerDbMaxCapacity);
     }
 
@@ -289,7 +289,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(18, result.PerDbMaxCapacity);
     }
 
@@ -306,7 +306,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(18, result.PerDbMaxCapacity);
     }
 
@@ -322,7 +322,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -338,7 +338,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -354,7 +354,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreFloor, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
@@ -370,7 +370,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(_config.VCoreCeiling, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(18, result.PerDbMaxCapacity);
     }
 
@@ -386,7 +386,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(20, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(14, result.PerDbMaxCapacity);
     }
 
@@ -403,7 +403,7 @@ public class AutoScalerTests
         var result = _autoScaler.GetNewPoolTarget(usageInfo, currentCpu);
 
         Assert.Equal(6, result.VCore);
-        Assert.Equal(0, PoolTargetSettings.PerDbMinCapacity);
+        Assert.Equal(0, result.PerDbMinCapacity);
         Assert.Equal(4, result.PerDbMaxCapacity);
     }
 
