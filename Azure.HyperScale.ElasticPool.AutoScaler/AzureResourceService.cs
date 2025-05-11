@@ -106,7 +106,7 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
                 },
                 PerDatabaseSettings = new ElasticPoolPerDatabaseSettings
                 {
-                    MinCapacity = PoolTargetSettings.PerDbMinCapacity,
+                    MinCapacity = newPoolSettings.PerDbMinCapacity,
                     MaxCapacity = newPoolSettings.PerDbMaxCapacity
                 }
             };

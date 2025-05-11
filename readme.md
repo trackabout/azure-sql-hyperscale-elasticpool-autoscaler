@@ -10,7 +10,7 @@ When hyperscale elastic pools were announced, we saw an opportunity. Hyperscale 
 
 In this repo, we offer our implementation of an automatic scaler, AutoScaler, for Azure SQL DB Hyperscale Elastic Pools.
 
-A single instance of AutoScaler can manage *multiple* elastic pools within a single Azure SQL Server.
+A single instance of AutoScaler can manage _multiple_ elastic pools within a single Azure SQL Server.
 
 To manage multiple Azure SQL Servers, you can run multiple instances of the AutoScaler.
 
@@ -68,7 +68,6 @@ In Summary:
 ## Logic Flowchart
 
 <img src="docs/logic-flowchart.svg" width=800 alt="AutoScaler Logic Flowchart" />
-
 
 ## Disclaimer
 
@@ -131,7 +130,6 @@ The Azure function's identity must have the necessary permission to invoke scali
 
 If using a user-assigned managed identity, add a Function environment variable named `AZURE_CLIENT_ID` and set it to the ObjectId of the managed identity you want to use for the function. Since a function app can have more than one managed identity assigned to it, this tells the SDK which identity to use.
 
-
 ## Logging Scaling Actions
 
 Elastic pool scaling actions can be found in Azure Activity Log.
@@ -184,13 +182,13 @@ The following low and high thresholds control scaling.
 - **ShortWindowLookup**: `300` Size of the short time window looking back at metric averages.
 - **MaxExpectedScalingTimeSeconds**: The longest we expect a scaling operation to take. If in-process scaling operations take longer than this, `WARNING` log lines will be written. You can create Azure Monitor Alert Rules to alert on this condition.
 - **CoolDownPeriodSeconds**: Microsoft recommends waiting 5-10 minutes (300-600 seconds) before issuing another scaling operation against the same elastic pool. We call this the cool down period.
+- **ScaleUpSteps**: Number of vCore steps to jump when scaling up (default 1). For example, if 2 and vCores are [4,6,8,10], scaling up from 4 will go to 8, skipping 6. This setting only affects scaling up; when scaling down, the autoscaler always moves one step at a time regardless of this setting.
 
 ### Elastic Pool Settings
 
 - **VCoreFloor**, **VCoreCeiling**: The minimum and maximum number of cores to use as bounds for scaling up and down. You may wish to set a hard ceiling to control costs.
 - **VCoreOptions**: `"4,6,8..."` The vCore steps you wish to make available for up- and down-scaling.
 - **PerDatabaseMaximums**: `"2,4,6..."` Controls the per-database maximum vCore setting for the pool at each step of VCoreOptions. Must map 1:1 with VCoreOptions.
-
 
 ### SQL Connection Resiliency Settings
 
@@ -199,7 +197,7 @@ The following low and high thresholds control scaling.
 
 ### Sentry Application Monitoring
 
-We use https://sentry.io, you may not.
+We use <https://sentry.io>, you may not.
 
 - **SentryDsn**: Specifies the Sentry Dsn. If not set, Sentry is not used.
 
@@ -281,7 +279,7 @@ However, the per-database MINIMUM vCore is always set to 0. If that is not what 
 
 ### Clamping to Ceiling and Floor
 
-**IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value *outside the bounds of the floor and ceiling settings*, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
+**IMPORTANT:** If a pool's vCore level is set from somewhere else (within the portal, PowerShell, etc.) to a vCore value _outside the bounds of the floor and ceiling settings_, the AutoScaler will snap it back into bounds in short order. This is very important to know in case, perhaps in an emergency, someone attempts to increase a pool beyond the ceiling.
 
 ## Possible Enhancements
 

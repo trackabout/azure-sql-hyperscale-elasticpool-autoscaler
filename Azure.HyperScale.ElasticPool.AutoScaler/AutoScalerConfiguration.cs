@@ -2,7 +2,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Azure.HyperScale.ElasticPool.AutoScaler;
 
-public class AutoScalerConfiguration
+public class AutoScalerConfiguration : IAutoScalerConfiguration
 {
     public string PoolDbConnection { get; }
     public string MetricsSqlConnection { get; }
@@ -32,6 +32,7 @@ public class AutoScalerConfiguration
     public bool IsDryRun { get; set; }
     public int MaxExpectedScalingTimeSeconds { get; }
     public int CoolDownPeriodSeconds { get; set; }
+    public int ScaleUpSteps { get; set; }
     public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
     public static string ManagedIdentityClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") ?? string.Empty;
 
@@ -77,6 +78,7 @@ public class AutoScalerConfiguration
 
         MaxExpectedScalingTimeSeconds = configuration.GetValue<int>("MaxExpectedScalingTimeSeconds");
         CoolDownPeriodSeconds = configuration.GetValue<int>("CoolDownPeriodSeconds");
+        ScaleUpSteps = configuration.GetValue<int>("ScaleUpSteps", 1);
 
         ElasticPools = configuration.GetValue<string>("ElasticPools")?
             .Split(',')
@@ -191,7 +193,8 @@ public class AutoScalerConfiguration
                $"RetryInterval: {RetryInterval}\n" +
                $"IsDryRun: {IsDryRun}\n" +
                $"MaxExpectedScalingTimeSeconds: {MaxExpectedScalingTimeSeconds}\n" +
-               $"CoolDownPeriodSeconds: {CoolDownPeriodSeconds}\n";
+               $"CoolDownPeriodSeconds: {CoolDownPeriodSeconds}\n" +
+               $"ScaleUpSteps: {ScaleUpSteps}\n";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)

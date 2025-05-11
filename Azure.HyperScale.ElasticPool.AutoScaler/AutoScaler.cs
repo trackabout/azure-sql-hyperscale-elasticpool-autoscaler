@@ -12,7 +12,7 @@ public enum ScalingActions
 
 public class AutoScaler(
     ILogger<AutoScaler> logger,
-    AutoScalerConfiguration autoScalerConfig,
+    IAutoScalerConfiguration autoScalerConfig,
     ISqlRepository sqlRepository,
     IErrorRecorder errorRecorder,
     IAzureResourceService azureResourceService)
@@ -21,7 +21,7 @@ public class AutoScaler(
     private IErrorRecorder _errorRecorder = errorRecorder ?? throw new ArgumentNullException(nameof(errorRecorder));
     private ISqlRepository _sqlRepository = sqlRepository ?? throw new ArgumentNullException(nameof(sqlRepository));
     private ILogger<AutoScaler> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    private AutoScalerConfiguration _config = autoScalerConfig ?? throw new ArgumentNullException(nameof(autoScalerConfig));
+    private IAutoScalerConfiguration _config = autoScalerConfig ?? throw new ArgumentNullException(nameof(autoScalerConfig));
     private IAzureResourceService _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
 
     [Function("AutoScaler")]
@@ -136,6 +136,9 @@ public class AutoScaler(
                 {
                     _logger.LogWarning($"EVALUATION RESULT: HIGH threshold crossed.");
                 }
+                else {
+                    _logger.LogInformation($"EVALUATION RESULT: Target vCore {targetVCore} <= Current vCore {currentVCore}.");
+                }
                 break;
 
             case ScalingActions.Down:
@@ -144,6 +147,9 @@ public class AutoScaler(
                 if (targetVCore < currentVCore)
                 {
                     _logger.LogWarning($"EVALUATION RESULT: LOW threshold crossed.");
+                }
+                else {
+                    _logger.LogInformation($"EVALUATION RESULT: Target vCore {targetVCore} >= Current vCore {currentVCore}.");
                 }
                 break;
 
@@ -229,8 +235,16 @@ public class AutoScaler(
                     return _config.VCoreCeiling;
                 }
 
-                // Otherwise, look up the correct next step.
-                return vCoreOptions.ElementAt(currentIndex + 1);
+                // Otherwise, look up the next step based on the ScaleUpSteps setting
+                var targetIndex = Math.Min(currentIndex + _config.ScaleUpSteps, vCoreOptions.Count - 1);
+
+                // Make sure we don't go above the ceiling
+                while (targetIndex > currentIndex && vCoreOptions.ElementAt(targetIndex) > _config.VCoreCeiling)
+                {
+                    targetIndex--;
+                }
+
+                return vCoreOptions.ElementAt(targetIndex);
 
             case ScalingActions.Down:
                 // If we're above the ceiling, bring down to ceiling.
