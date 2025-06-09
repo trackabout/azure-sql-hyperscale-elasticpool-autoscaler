@@ -301,7 +301,7 @@ public class SqlRepository : ISqlRepository
         return sqlConnection;
     }
 
-    public async Task WriteToAutoScaleMonitorTableAsync(UsageInfo elasticPool, double currentVCore, double targetVCore)
+    public async Task WriteToAutoScaleMonitorTableAsync(UsageInfo elasticPool, double currentVCore, double targetVCore, bool isGeoReplicationDelay = false)
     {
         // If no connection string is set here, just return.
         if (_config.MetricsSqlConnection.Length == 0)
@@ -312,17 +312,26 @@ public class SqlRepository : ISqlRepository
         try
         {
             await using var metricsConnection = CreateSqlConnection(_config.MetricsSqlConnection);
+
+            string sql = "INSERT INTO [hs].[AutoScalerMonitor] (ElasticPoolName, CurrentSLO, RequestedSLO, UsageInfo, Notes) " +
+                         "VALUES (@ElasticPoolName, @CurrentSLO, @RequestedSLO, @UsageInfo, @Notes)";
+
+            string? notes = null;
+            if (isGeoReplicationDelay)
+            {
+                notes = "Scaling delayed due to geo-replication activity. Will retry later.";
+            }
+
             await metricsConnection.ExecuteAsync(
-                "INSERT INTO [hs].[AutoScalerMonitor] (ElasticPoolName, CurrentSLO, RequestedSLO, UsageInfo) " +
-                "VALUES (@ElasticPoolName, @CurrentSLO, @RequestedSLO, @UsageInfo)",
+                sql,
                 new
                 {
                     elasticPool.ElasticPoolName,
                     CurrentSLO = currentVCore.ToString("F2"), // Format to 2 decimal places
                     RequestedSLO = targetVCore.ToString("F2"), // Format to 2 decimal places
-                    UsageInfo = JsonConvert.SerializeObject(elasticPool)
+                    UsageInfo = JsonConvert.SerializeObject(elasticPool),
+                    Notes = notes
                 }).ConfigureAwait(false);
-
         }
         catch (SqlException ex)
         {
