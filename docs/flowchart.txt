@@ -1,6 +1,6 @@
 ---
 config:
-  theme: neutral
+  theme: default
 ---
 flowchart TD
     A[Start] --> B[Check Permissions]
