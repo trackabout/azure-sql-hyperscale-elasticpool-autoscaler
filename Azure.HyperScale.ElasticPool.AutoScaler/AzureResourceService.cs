@@ -4,6 +4,8 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.Sql;
 using Azure.ResourceManager.Sql.Models;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace Azure.HyperScale.ElasticPool.AutoScaler;
 
@@ -120,6 +122,34 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
 
             // Write new target SLO to monitor table
             await _sqlRepository.WriteToAutoScaleMonitorTableAsync(usageInfo, currentVCore, newPoolSettings.VCore).ConfigureAwait(false);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 409)
+        {
+            // Check if this is the geo-replication error (40940)
+            try
+            {
+                if (ex.Message.Contains("ElasticPoolUpdateLinksNotInCatchup") ||
+                    ex.Message.Contains("40940"))
+                {
+                    _logger.LogWarning($"{elasticPoolName}: Scaling operation failed due to geo-replication activity. Will retry on next execution cycle. Error: {ex.Message}");
+
+                    // Log the error and the intent to retry in the monitoring table
+                    await _sqlRepository.WriteToAutoScaleMonitorTableAsync(
+                        usageInfo,
+                        currentVCore,
+                        newPoolSettings.VCore,
+                        isGeoReplicationDelay: true).ConfigureAwait(false);
+                }
+                else
+                {
+                    _errorRecorder.RecordError(ex, $"{elasticPoolName}: Failed to scale pool to {newPoolSettings.VCore} vCores due to a conflict error.");
+                }
+            }
+            catch
+            {
+                // If there's an error parsing the response, just log the original exception
+                _errorRecorder.RecordError(ex, $"{elasticPoolName}: Failed to scale pool to {newPoolSettings.VCore} vCores due to a conflict error.");
+            }
         }
         catch (Exception ex)
         {

@@ -20,7 +20,11 @@ public interface ISqlRepository
     /// <summary>
     /// Writes the specified usage metrics to the AutoScaleMonitor table.
     /// </summary>
-    Task WriteToAutoScaleMonitorTableAsync(UsageInfo elasticPool, double currentVCore, double targetVCore);
+    /// <param name="elasticPool">The elastic pool usage information</param>
+    /// <param name="currentVCore">The current vCore setting</param>
+    /// <param name="targetVCore">The target vCore setting</param>
+    /// <param name="isGeoReplicationDelay">Optional flag indicating if this is a delayed operation due to geo-replication</param>
+    Task WriteToAutoScaleMonitorTableAsync(UsageInfo elasticPool, double currentVCore, double targetVCore, bool isGeoReplicationDelay = false);
 
     /// <summary>
     /// Returns a list of elastic pools currently within the cooldown period.
