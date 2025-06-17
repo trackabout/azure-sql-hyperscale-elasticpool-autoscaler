@@ -67,7 +67,7 @@ In Summary:
 
 ## Logic Flowchart
 
-<img src="docs/logic-flowchart.svg" width=800 alt="AutoScaler Logic Flowchart" />
+<img src="docs/flowchart.svg" width=800 alt="AutoScaler Logic Flowchart" />
 
 ## Disclaimer
 
