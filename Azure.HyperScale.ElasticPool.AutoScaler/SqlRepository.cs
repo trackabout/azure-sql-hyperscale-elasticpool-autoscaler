@@ -23,14 +23,8 @@ public class SqlRepository : ISqlRepository
         _errorRecorder = errorRecorder;
     }
 
-    private static string CreateSqlCompatibleList(List<string> poolsToConsider)
-    {
-        return string.Join(", ", poolsToConsider.Select(name => $"'{name}'"));
-    }
-
     public async Task<IEnumerable<UsageInfo>?> SamplePoolMetricsAsync(List<string> poolsToConsider)
     {
-        var elasticPoolNames = CreateSqlCompatibleList(poolsToConsider);
         // There is a view in the master database, sys.elastic_pool_resource_stats, which provides
         // metrics for all elastic pools on a given server, but its metrics are significantly delayed.
         // We've seen delays over 5 minutes.
@@ -41,7 +35,7 @@ public class SqlRepository : ISqlRepository
         // In order to make use of the most timely source, sys.dm_elastic_pool_resource_stats, we'll
         // need to pick a database in each pool of interest to query. Which one doesn't matter.
 
-        var findPoolDatabasesForMetrics = $"""
+        var findPoolDatabasesForMetrics = """
                                             WITH PoolDatabases AS (
                                                 SELECT
                                                     DatabaseName = d.name,
@@ -52,7 +46,7 @@ public class SqlRepository : ISqlRepository
                                                 JOIN
                                                     sys.databases d ON d.database_id = dso.database_id
                                                 WHERE
-                                                    dso.elastic_pool_name IN ({elasticPoolNames})
+                                                    dso.elastic_pool_name IN @PoolNames
                                                 AND
                                                     d.state = 0 -- ONLINE
                                             )
@@ -69,9 +63,9 @@ public class SqlRepository : ISqlRepository
             var retryPolicy = GetRetryPolicy();
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                await using var masterConnection = CreateSqlConnection(_config.MasterSqlConnection);
+                await using var masterConnection = await CreateSqlConnectionAsync(_config.MasterSqlConnection);
                 var metricDbsToQuery = await masterConnection
-                    .QueryAsync<(string DatabaseName, string ElasticPoolName)>(findPoolDatabasesForMetrics)
+                    .QueryAsync<(string DatabaseName, string ElasticPoolName)>(findPoolDatabasesForMetrics, new { PoolNames = poolsToConsider })
                     .ConfigureAwait(false);
 
                 return await GetShortLongWindowUsageAsync(metricDbsToQuery).ConfigureAwait(false);
@@ -133,7 +127,7 @@ public class SqlRepository : ISqlRepository
 
                 return await retryPolicy.ExecuteAsync(async () =>
                 {
-                    await using var databaseConnection = CreateSqlConnection(_config.PoolDbConnection.Replace("{DatabaseName}", db.DatabaseName));
+                    await using var databaseConnection = await CreateSqlConnectionAsync(BuildPoolDbConnectionString(_config.PoolDbConnection, db.DatabaseName));
                     var statsRows = (await databaseConnection.QueryAsync<dynamic>(sql).ConfigureAwait(false)).ToList();
 
                     if (statsRows.Count == 0)
@@ -174,7 +168,7 @@ public class SqlRepository : ISqlRepository
     /// <returns>A list of pools currently transitioning.</returns>
     public virtual async Task<IEnumerable<string>> GetPoolsInTransitionAsync()
     {
-        var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
+        var poolNames = _config.ElasticPools.Keys.ToList();
         // Ensure we're only looking at the most recent UPDATE ELASTIC POOL entry
         // for each pool under consideration.
 
@@ -187,7 +181,7 @@ public class SqlRepository : ISqlRepository
         // 3 = Failed
         // 5 = Cancelled
 
-        var sql = $"""
+        var sql = """
                WITH LatestOperations AS (
                     SELECT
                         major_resource_id AS [ElasticPoolInTransition],
@@ -198,7 +192,7 @@ public class SqlRepository : ISqlRepository
                     WHERE resource_type = 0 -- Database
                     AND operation = 'UPDATE ELASTIC POOL'
                     AND state IN (0, 1, 4)
-                    AND major_resource_id IN ({elasticPoolNames})
+                    AND major_resource_id IN @PoolNames
                )
                SELECT
                ElasticPoolInTransition,
@@ -214,8 +208,8 @@ public class SqlRepository : ISqlRepository
 
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                await using var masterConnection = CreateSqlConnection(_config.MasterSqlConnection);
-                var pools = (await masterConnection.QueryAsync<(string ElasticPoolInTransition, string State, int OperationDurationSeconds)>(sql)
+                await using var masterConnection = await CreateSqlConnectionAsync(_config.MasterSqlConnection);
+                var pools = (await masterConnection.QueryAsync<(string ElasticPoolInTransition, string State, int OperationDurationSeconds)>(sql, new { PoolNames = poolNames })
                     .ConfigureAwait(false)).ToList();
 
                 // Log each pool's state
@@ -251,8 +245,8 @@ public class SqlRepository : ISqlRepository
     /// <returns>A dictionary of elastic pool names and the number of seconds since their last scaling operation.</returns>
     public virtual async Task<Dictionary<string, int>?> GetLastScalingOperationsAsync()
     {
-        var elasticPoolNames = CreateSqlCompatibleList([.. _config.ElasticPools.Keys]);
-        var sql = $"""
+        var poolNames = _config.ElasticPools.Keys.ToList();
+        var sql = """
                    SELECT
                        major_resource_id AS [ElasticPoolName],
                        DATEDIFF(SECOND, MAX(last_modify_time), GETUTCDATE()) AS [SecondsSinceLastScaling]
@@ -260,7 +254,7 @@ public class SqlRepository : ISqlRepository
                    WHERE resource_type = 0 -- Database
                    AND operation = 'UPDATE ELASTIC POOL'
                    AND state = 2 -- Completed
-                   AND major_resource_id IN ({elasticPoolNames})
+                   AND major_resource_id IN @PoolNames
                    GROUP BY major_resource_id;
                    """;
         try
@@ -269,8 +263,8 @@ public class SqlRepository : ISqlRepository
 
             return await retryPolicy.ExecuteAsync(async () =>
             {
-                await using var masterConnection = CreateSqlConnection(_config.MasterSqlConnection);
-                var results = await masterConnection.QueryAsync<(string ElasticPoolName, int SecondsSinceLastScaling)>(sql).ConfigureAwait(false);
+                await using var masterConnection = await CreateSqlConnectionAsync(_config.MasterSqlConnection);
+                var results = await masterConnection.QueryAsync<(string ElasticPoolName, int SecondsSinceLastScaling)>(sql, new { PoolNames = poolNames }).ConfigureAwait(false);
 
                 var resultDict = results.ToDictionary(
                     p => p.ElasticPoolName,
@@ -287,16 +281,30 @@ public class SqlRepository : ISqlRepository
         }
     }
 
-    private SqlConnection CreateSqlConnection(string connectionString)
+    private static readonly DefaultAzureCredential? _credential =
+        AutoScalerConfiguration.IsUsingManagedIdentity
+            ? new DefaultAzureCredential(new DefaultAzureCredentialOptions
+              {
+                  ManagedIdentityClientId = AutoScalerConfiguration.ManagedIdentityClientId
+              })
+            : null;
+
+    private static string BuildPoolDbConnectionString(string templateConnectionString, string databaseName)
+    {
+        var builder = new SqlConnectionStringBuilder(templateConnectionString);
+        builder.InitialCatalog = databaseName;
+        return builder.ConnectionString;
+    }
+
+    private async Task<SqlConnection> CreateSqlConnectionAsync(string connectionString)
     {
         var sqlConnection = new SqlConnection(connectionString);
 
-        if (AutoScalerConfiguration.IsUsingManagedIdentity)
+        if (_credential != null)
         {
-            sqlConnection.AccessToken = new DefaultAzureCredential(new DefaultAzureCredentialOptions
-            {
-                ManagedIdentityClientId = AutoScalerConfiguration.ManagedIdentityClientId
-            }).GetToken(new TokenRequestContext(new[] { "https://database.windows.net/.default" })).Token;
+            var tokenResult = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { "https://database.windows.net/.default" })).ConfigureAwait(false);
+            sqlConnection.AccessToken = tokenResult.Token;
         }
         return sqlConnection;
     }
@@ -311,7 +319,7 @@ public class SqlRepository : ISqlRepository
 
         try
         {
-            await using var metricsConnection = CreateSqlConnection(_config.MetricsSqlConnection);
+            await using var metricsConnection = await CreateSqlConnectionAsync(_config.MetricsSqlConnection);
 
             string sql = "INSERT INTO [hs].[AutoScalerMonitor] (ElasticPoolName, CurrentSLO, RequestedSLO, UsageInfo, Notes) " +
                          "VALUES (@ElasticPoolName, @CurrentSLO, @RequestedSLO, @UsageInfo, @Notes)";
@@ -337,6 +345,64 @@ public class SqlRepository : ISqlRepository
         {
             _errorRecorder.RecordError(ex,
                 $"{elasticPool.ElasticPoolName}: Error while writing metrics to AutoScalerMonitor table.");
+        }
+    }
+
+    public async Task CheckpointDatabasesInPoolAsync(string elasticPoolName)
+    {
+        var sql = """
+            SELECT d.name AS DatabaseName
+            FROM sys.database_service_objectives dso
+            JOIN sys.databases d ON d.database_id = dso.database_id
+            WHERE dso.elastic_pool_name = @ElasticPoolName
+            AND d.state = 0
+            """;
+
+        try
+        {
+            var retryPolicy = GetRetryPolicy();
+            var databases = await retryPolicy.ExecuteAsync(async () =>
+            {
+                await using var masterConnection = await CreateSqlConnectionAsync(_config.MasterSqlConnection);
+                return (await masterConnection.QueryAsync<string>(sql, new { ElasticPoolName = elasticPoolName })
+                    .ConfigureAwait(false)).ToList();
+            });
+
+            _logger.LogInformation("Checkpointing {Count} databases in pool {Pool} before scaling.",
+                databases.Count, elasticPoolName);
+
+            using var semaphore = new SemaphoreSlim(_config.CheckpointConcurrency);
+            var tasks = databases.Select(async dbName =>
+            {
+                await semaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    await retryPolicy.ExecuteAsync(async () =>
+                    {
+                        var connStr = BuildPoolDbConnectionString(_config.PoolDbConnection, dbName);
+                        await using var conn = await CreateSqlConnectionAsync(connStr);
+                        await conn.ExecuteAsync("CHECKPOINT").ConfigureAwait(false);
+                    });
+                    _logger.LogInformation("Checkpoint completed for database {Database} in pool {Pool}.",
+                        dbName, elasticPoolName);
+                }
+                catch (Exception ex)
+                {
+                    _errorRecorder.RecordError(ex,
+                        $"{elasticPoolName}: Checkpoint failed for database {dbName}. Scaling will proceed.");
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (SqlException ex)
+        {
+            _errorRecorder.RecordError(ex,
+                $"{elasticPoolName}: Failed to enumerate databases for checkpointing. Scaling will proceed.");
         }
     }
 

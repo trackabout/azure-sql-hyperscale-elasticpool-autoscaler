@@ -106,6 +106,25 @@ public class AutoScaler(
             return;
         }
 
+        // Checkpoint all databases in the pool before scaling to reduce
+        // crash recovery redo work during the SLO transition.
+        // Best-effort: failures must never block scaling.
+        try
+        {
+            _logger.LogInformation($"Checkpointing databases in {serverAndPool} before scaling...");
+            await _sqlRepository.CheckpointDatabasesInPoolAsync(usageInfo.ElasticPoolName).ConfigureAwait(false);
+            if (_config.PostCheckpointDelaySeconds > 0)
+            {
+                _logger.LogInformation($"Checkpoints complete for {serverAndPool}. Waiting {_config.PostCheckpointDelaySeconds} seconds for flush settlement...");
+                await Task.Delay(TimeSpan.FromSeconds(_config.PostCheckpointDelaySeconds)).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorRecorder.RecordError(ex,
+                $"{serverAndPool}: Checkpoint failed, but scaling will proceed.");
+        }
+
         try
         {
             // We are going to scale!

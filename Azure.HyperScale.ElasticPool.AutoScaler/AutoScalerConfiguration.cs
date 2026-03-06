@@ -33,6 +33,8 @@ public class AutoScalerConfiguration : IAutoScalerConfiguration
     public int MaxExpectedScalingTimeSeconds { get; }
     public int CoolDownPeriodSeconds { get; set; }
     public int ScaleUpSteps { get; set; }
+    public int CheckpointConcurrency { get; set; }
+    public int PostCheckpointDelaySeconds { get; set; }
     public static bool IsUsingManagedIdentity => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_CLIENT_ID"));
     public static string ManagedIdentityClientId => Environment.GetEnvironmentVariable("AZURE_CLIENT_ID") ?? string.Empty;
 
@@ -79,6 +81,8 @@ public class AutoScalerConfiguration : IAutoScalerConfiguration
         MaxExpectedScalingTimeSeconds = configuration.GetValue<int>("MaxExpectedScalingTimeSeconds");
         CoolDownPeriodSeconds = configuration.GetValue<int>("CoolDownPeriodSeconds");
         ScaleUpSteps = configuration.GetValue<int>("ScaleUpSteps", 1);
+        CheckpointConcurrency = configuration.GetValue<int>("CheckpointConcurrency", 5);
+        PostCheckpointDelaySeconds = configuration.GetValue<int>("PostCheckpointDelaySeconds", 3);
 
         ElasticPools = configuration.GetValue<string>("ElasticPools")?
             .Split(',')
@@ -131,6 +135,11 @@ public class AutoScalerConfiguration : IAutoScalerConfiguration
         if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
+        }
+
+        if (CheckpointConcurrency < 1 || CheckpointConcurrency > 25)
+        {
+            throw new InvalidOperationException("CheckpointConcurrency must be between 1 and 25.");
         }
 
 
@@ -194,7 +203,9 @@ public class AutoScalerConfiguration : IAutoScalerConfiguration
                $"IsDryRun: {IsDryRun}\n" +
                $"MaxExpectedScalingTimeSeconds: {MaxExpectedScalingTimeSeconds}\n" +
                $"CoolDownPeriodSeconds: {CoolDownPeriodSeconds}\n" +
-               $"ScaleUpSteps: {ScaleUpSteps}\n";
+               $"ScaleUpSteps: {ScaleUpSteps}\n" +
+               $"CheckpointConcurrency: {CheckpointConcurrency}\n" +
+               $"PostCheckpointDelaySeconds: {PostCheckpointDelaySeconds}\n";
     }
 
     private static List<double> ParseVCoreList(string vCoreOptions)

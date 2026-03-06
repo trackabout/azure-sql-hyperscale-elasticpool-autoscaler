@@ -278,4 +278,47 @@ public class ConfigurationTests
         // Act & Assert
         Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(config));
     }
+
+    [Fact]
+    public void CheckpointConcurrency_DefaultsTo5()
+    {
+        var configuration = LoadConfiguration();
+        var config = new AutoScalerConfiguration(configuration);
+        Assert.Equal(5, config.CheckpointConcurrency);
+    }
+
+    [Fact]
+    public void CheckpointConcurrency_ReadsCustomValue()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "CheckpointConcurrency", "10" } });
+        var config = new AutoScalerConfiguration(configuration);
+        Assert.Equal(10, config.CheckpointConcurrency);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("26")]
+    public void CheckpointConcurrency_OutOfRange_ThrowsException(string value)
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "CheckpointConcurrency", value } });
+        var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
+        Assert.Contains("CheckpointConcurrency must be between 1 and 25", exception.Message);
+    }
+
+    [Fact]
+    public void PostCheckpointDelaySeconds_DefaultsTo3()
+    {
+        var configuration = LoadConfiguration();
+        var config = new AutoScalerConfiguration(configuration);
+        Assert.Equal(3, config.PostCheckpointDelaySeconds);
+    }
+
+    [Fact]
+    public void PostCheckpointDelaySeconds_ReadsCustomValue()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "PostCheckpointDelaySeconds", "5" } });
+        var config = new AutoScalerConfiguration(configuration);
+        Assert.Equal(5, config.PostCheckpointDelaySeconds);
+    }
 }

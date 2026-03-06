@@ -31,6 +31,8 @@ public interface IAutoScalerConfiguration
     int MaxExpectedScalingTimeSeconds { get; }
     int CoolDownPeriodSeconds { get; }
     int ScaleUpSteps { get; }
+    int CheckpointConcurrency { get; }
+    int PostCheckpointDelaySeconds { get; }
 
     double GetVCoreFloorForPool(string poolName);
     double GetPerDatabaseMaxByVCore(double targetVCore);
