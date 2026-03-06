@@ -269,6 +269,7 @@ __blobstorage__/
 __queuestorage__/
 __azurite*.json
 **/AzuriteConfig/
+AzuriteConfig
 
 # Dolt database files (added by bd init)
 .dolt/
