@@ -10,9 +10,9 @@
     "HighDataIoPercent": "70",
     "HighInstanceCpuPercent": "70",
     "HighWorkersPercent": "50",
-    "IsDryRun": "false",
+    "IsDryRun": "true",
     "LongWindowLookback": "900",
-    "SentryDsn": "...",
+    "SentryDsn": "",
     "ShortWindowLookback": "300",
     "LowCpuPercent": "20",
     "LowDataIoPercent": "20",
@@ -23,16 +23,14 @@
     "ResourceGroupName": "...",
     "RetryCount": "3",
     "RetryInterval": "5",
+    "ScaleUpSteps": "1",
+    "CheckpointConcurrency": "5",
+    "PostCheckpointDelaySeconds": "3",
     "SqlInstanceName": "...",
     "SubscriptionId": "...",
     "VCoreCeiling": "16",
     "VCoreFloor": "4",
-    "VCoreOptions": "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128",
-  },
-  "ConnectionStrings": {
-    "PoolDbConnection": "Server=tcp:sql_server_host;Database={DatabaseName};auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
-    "MetricsSqlConnection": "Server=tcp:sql_server_host;Database=metrics_db;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;",
-    "MasterSqlConnection": "Server=tcp:sql_server_host;Database=master;auth_details_here;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;"
+    "VCoreOptions": "4,6,8,10,12,14,16,18,20,24,32,40,64,80,128"
   },
   "Host": {
     "CORS": "*"

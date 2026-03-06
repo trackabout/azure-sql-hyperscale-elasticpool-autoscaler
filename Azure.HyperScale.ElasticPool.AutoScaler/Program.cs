@@ -10,6 +10,13 @@ var sentryDsn = Environment.GetEnvironmentVariable("SentryDsn");
 var isSentryLoggingEnabled = !string.IsNullOrEmpty(sentryDsn);
 
 var host = new HostBuilder()
+    .ConfigureAppConfiguration((context, config) =>
+    {
+        if (context.HostingEnvironment.IsDevelopment())
+        {
+            config.AddUserSecrets(typeof(AutoScalerConfiguration).Assembly, optional: true);
+        }
+    })
     .ConfigureFunctionsWebApplication()
     .ConfigureFunctionsWorkerDefaults((context, builder) =>
     {
