@@ -19,7 +19,8 @@ flowchart TD
     HOLD --> NOOP[Do Nothing]
 
     G -->|Yes| NOOP
-    G -->|No| SCALE[ScaleElasticPool<br/>+ Write to Monitor Table]
+    G -->|No| CKPT[Checkpoint All Databases<br/>in Pool]
+    CKPT --> SCALE[ScaleElasticPool<br/>+ Write to Monitor Table]
 
     NOOP --> NEXT[Check Next Pool]
     SCALE --> NEXT
