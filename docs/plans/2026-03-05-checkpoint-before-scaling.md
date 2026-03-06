@@ -1,7 +1,7 @@
 # Checkpoint Before Scaling — Design & Implementation Record
 
 **Date:** 2026-03-05
-**Status:** Implemented and merged
+**Status:** Implemented
 **Branch:** `feature/checkpoint-before-scaling`
 
 ## Background
