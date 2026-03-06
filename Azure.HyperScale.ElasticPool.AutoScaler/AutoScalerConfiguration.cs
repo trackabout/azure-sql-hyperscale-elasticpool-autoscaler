@@ -132,7 +132,7 @@ public class AutoScalerConfiguration : IAutoScalerConfiguration
         }
 
         // None of the numeric values should ever be negative.
-        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0)
+        if (LowCpuPercent < 0 || HighCpuPercent < 0 || LowWorkersPercent < 0 || HighWorkersPercent < 0 || LowInstanceCpuPercent < 0 || HighInstanceCpuPercent < 0 || LowDataIoPercent < 0 || HighDataIoPercent < 0 || VCoreFloor < 0 || VCoreCeiling < 0 || RetryCount < 0 || RetryInterval < 0 || PostCheckpointDelaySeconds < 0)
         {
             throw new InvalidOperationException("None of the numeric values should be negative.");
         }

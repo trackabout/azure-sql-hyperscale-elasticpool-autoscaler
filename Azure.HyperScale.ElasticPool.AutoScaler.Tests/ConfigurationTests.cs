@@ -321,4 +321,12 @@ public class ConfigurationTests
         var config = new AutoScalerConfiguration(configuration);
         Assert.Equal(5, config.PostCheckpointDelaySeconds);
     }
+
+    [Fact]
+    public void PostCheckpointDelaySeconds_Negative_ThrowsException()
+    {
+        var configuration = LoadConfiguration(new Dictionary<string, string?> { { "PostCheckpointDelaySeconds", "-1" } });
+        var exception = Assert.Throws<InvalidOperationException>(() => new AutoScalerConfiguration(configuration));
+        Assert.Contains("None of the numeric values should be negative.", exception.Message);
+    }
 }
