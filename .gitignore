@@ -268,3 +268,15 @@ test*.json
 __blobstorage__/
 __queuestorage__/
 __azurite*.json
+**/AzuriteConfig/
+AzuriteConfig
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
+
+# Agent/tooling artifacts
+.beads/
+.claude/settings.local.json
+AGENTS.md
+checkpoint-timing*.csv

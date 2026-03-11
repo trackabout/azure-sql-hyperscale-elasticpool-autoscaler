@@ -152,13 +152,29 @@ Logging is sent to [Azure Application Insights](https://docs.microsoft.com/en-us
 
 ## Deployment of the Azure Function
 
-Deploy the functino to Azure and set up the function's application settings using the contents of `local.settings.example.json` as a guide.
+Deploy the function to Azure and set up the function's application settings using the contents of `local.settings.example.json` as a guide.
 
 ### Connection Strings
 
 - **MasterSqlConnection**: Connection string to the Azure SQL Server master database.
 - **PoolDbConnection**: This is a templatized connection string used to connect to one of the databases in the Elastic Pool. A database in each pool will be chosen at random each time the AutoScaler runs. The AutoScaler must connect to a database within the pool in order to sample the performance metrics. This is because the most rapidly-updated source of the performance metrics is gettable only within a pool database, not the `master` database.
 - **MetricsSQLConnection**: Connection string to the Azure SQL Database containing the `hs.AutoScalerMonitor` table. This database can live anywhere you like. The user must have write access to the `hs.AutoScalerMonitor` table. Leave it blank if you don't want to use it.
+
+#### Local Development: Storing Connection Strings Securely
+
+Connection strings contain credentials and should **not** be stored in `local.settings.json` (which could accidentally be committed to source control). Instead, use [.NET User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets):
+
+```bash
+# Initialize user secrets (one-time)
+dotnet user-secrets init --project Azure.HyperScale.ElasticPool.AutoScaler
+
+# Store each connection string
+dotnet user-secrets set --project Azure.HyperScale.ElasticPool.AutoScaler "ConnectionStrings:MasterSqlConnection" 'Server=tcp:your-server.database.windows.net;Database=master;User ID=...;Password=...;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;'
+dotnet user-secrets set --project Azure.HyperScale.ElasticPool.AutoScaler "ConnectionStrings:PoolDbConnection" 'Server=tcp:your-server.database.windows.net;Database={DatabaseName};User ID=...;Password=...;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;'
+dotnet user-secrets set --project Azure.HyperScale.ElasticPool.AutoScaler "ConnectionStrings:MetricsSqlConnection" 'Server=tcp:your-server.database.windows.net;Database=Admin;User ID=...;Password=...;Connection Timeout=30;Encrypt=True;TrustServerCertificate=False;'
+```
+
+User secrets are stored outside the repository in your user profile and are automatically merged with `local.settings.json` at runtime. Each developer sets up their own.
 
 ### Azure Resource Identifiers
 
@@ -183,6 +199,8 @@ The following low and high thresholds control scaling.
 - **MaxExpectedScalingTimeSeconds**: The longest we expect a scaling operation to take. If in-process scaling operations take longer than this, `WARNING` log lines will be written. You can create Azure Monitor Alert Rules to alert on this condition.
 - **CoolDownPeriodSeconds**: Microsoft recommends waiting 5-10 minutes (300-600 seconds) before issuing another scaling operation against the same elastic pool. We call this the cool down period.
 - **ScaleUpSteps**: Number of vCore steps to jump when scaling up (default 1). For example, if 2 and vCores are [4,6,8,10], scaling up from 4 will go to 8, skipping 6. This setting only affects scaling up; when scaling down, the autoscaler always moves one step at a time regardless of this setting.
+- **CheckpointConcurrency**: Maximum number of concurrent CHECKPOINT operations per pool before scaling (default 5, range 1-25). Before each scaling operation, the AutoScaler runs CHECKPOINT on all databases in the pool to reduce crash recovery work during the SLO transition. This controls how many databases are checkpointed in parallel.
+- **PostCheckpointDelaySeconds**: Seconds to wait after checkpoints complete before initiating the scaling operation (default 3). This allows time for flush settlement. Set to 0 to skip the delay.
 
 ### Elastic Pool Settings
 

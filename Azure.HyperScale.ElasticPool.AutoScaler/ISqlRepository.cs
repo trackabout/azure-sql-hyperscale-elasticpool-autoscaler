@@ -37,4 +37,10 @@ public interface ISqlRepository
     /// </summary>
     /// <returns>A list of pools to consider for scaling.</returns>
     Task<List<string>> GetPoolsToConsider();
+
+    /// <summary>
+    /// Runs CHECKPOINT on all ONLINE databases in the specified elastic pool
+    /// to flush dirty pages before a scaling operation.
+    /// </summary>
+    Task CheckpointDatabasesInPoolAsync(string elasticPoolName);
 }

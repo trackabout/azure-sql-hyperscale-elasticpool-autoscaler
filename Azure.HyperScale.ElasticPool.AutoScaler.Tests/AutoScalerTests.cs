@@ -48,6 +48,7 @@ public class AutoScalerTests
 
             {"MaxExpectedScalingTimeSeconds", "300"}, // 5m
             {"CoolDownPeriodSeconds", "600"}, // 10m
+            {"PostCheckpointDelaySeconds", "0"}, // skip delay in tests
         };
 
         var configuration = new ConfigurationBuilder()
@@ -707,6 +708,210 @@ public class AutoScalerTests
         Assert.DoesNotContain("test-pool1", result);
     }
 
+
+    [Fact]
+    public async Task DoTheThing_CheckpointCalledBeforeScaling()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+        var callOrder = new List<string>();
+
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>
+            {
+                new()
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 4,
+                    ShortAvgCpu = _config.HighCpuPercent + 1,
+                    LongAvgCpu = _config.HighCpuPercent + 1
+                }
+            });
+
+        _sqlRepositoryMock.Setup(repo => repo.CheckpointDatabasesInPoolAsync("test-pool1"))
+            .Callback<string>(_ => callOrder.Add("Checkpoint"))
+            .Returns(Task.CompletedTask);
+
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .Callback(() => callOrder.Add("Scale"))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _autoScaler.DoTheThing();
+
+        // Assert — checkpoint must come before scale
+        Assert.Equal(2, callOrder.Count);
+        Assert.Equal("Checkpoint", callOrder[0]);
+        Assert.Equal("Scale", callOrder[1]);
+    }
+
+    [Fact]
+    public async Task DoTheThing_ScalingProceedsWhenCheckpointThrows()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>
+            {
+                new()
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 4,
+                    ShortAvgCpu = _config.HighCpuPercent + 1,
+                    LongAvgCpu = _config.HighCpuPercent + 1
+                }
+            });
+
+        _sqlRepositoryMock.Setup(repo => repo.CheckpointDatabasesInPoolAsync(It.IsAny<string>()))
+            .ThrowsAsync(new Exception("Checkpoint failed"));
+
+        // Act
+        await _autoScaler.DoTheThing();
+
+        // Assert — scaling should still happen
+        _azureResourceServiceMock.Verify(service => service.ScaleElasticPoolAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()), Times.Once);
+
+        // Assert — checkpoint error was recorded, not silently swallowed
+        _errorRecorderMock.Verify(recorder => recorder.RecordError(
+            It.IsAny<Exception>(),
+            It.Is<string>(s => s.Contains("Checkpoint failed"))), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_CheckpointNotCalledDuringDryRun()
+    {
+        // Arrange
+        _config.IsDryRun = true;
+
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>
+            {
+                new()
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 4,
+                    ShortAvgCpu = _config.HighCpuPercent + 1,
+                    LongAvgCpu = _config.HighCpuPercent + 1
+                }
+            });
+
+        // Act
+        await _autoScaler.DoTheThing();
+
+        // Assert
+        _sqlRepositoryMock.Verify(repo => repo.CheckpointDatabasesInPoolAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_CheckpointNotCalledOnHold()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>
+            {
+                new()
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 8,
+                    // Metrics between low and high — Hold
+                    ShortAvgCpu = _config.LowCpuPercent + 1,
+                    LongAvgCpu = _config.LowCpuPercent + 1,
+                    ShortDataIo = _config.LowDataIoPercent + 1,
+                    LongDataIo = _config.LowDataIoPercent + 1,
+                    ShortInstanceCpu = _config.LowInstanceCpuPercent + 1,
+                    LongInstanceCpu = _config.LowInstanceCpuPercent + 1,
+                    ShortWorkersPercent = _config.LowWorkersPercent + 1,
+                    LongWorkersPercent = _config.LowWorkersPercent + 1
+                }
+            });
+
+        // Act
+        await _autoScaler.DoTheThing();
+
+        // Assert
+        _sqlRepositoryMock.Verify(repo => repo.CheckpointDatabasesInPoolAsync(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_CheckpointCalledBeforeScaleDown()
+    {
+        // Arrange
+        _config.IsDryRun = false;
+        var callOrder = new List<string>();
+
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>
+            {
+                new()
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 8,
+                    ShortAvgCpu = _config.LowCpuPercent - 1,
+                    LongAvgCpu = _config.LowCpuPercent - 1,
+                    ShortDataIo = _config.LowDataIoPercent - 1,
+                    LongDataIo = _config.LowDataIoPercent - 1,
+                    ShortInstanceCpu = _config.LowInstanceCpuPercent - 1,
+                    LongInstanceCpu = _config.LowInstanceCpuPercent - 1,
+                    ShortWorkersPercent = _config.LowWorkersPercent - 1,
+                    LongWorkersPercent = _config.LowWorkersPercent - 1
+                }
+            });
+
+        _sqlRepositoryMock.Setup(repo => repo.CheckpointDatabasesInPoolAsync(It.IsAny<string>()))
+            .Callback<string>(_ => callOrder.Add("Checkpoint"))
+            .Returns(Task.CompletedTask);
+
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .Callback(() => callOrder.Add("Scale"))
+            .Returns(Task.CompletedTask);
+
+        // Act
+        await _autoScaler.DoTheThing();
+
+        // Assert — checkpoint must come before scale
+        Assert.Equal(2, callOrder.Count);
+        Assert.Equal("Checkpoint", callOrder[0]);
+        Assert.Equal("Scale", callOrder[1]);
+    }
 
     [Fact]
     public async Task DoTheThing_WithinCooldown_ShouldNotScale()
