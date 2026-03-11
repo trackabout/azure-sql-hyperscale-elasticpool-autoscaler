@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup DotNet
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -34,7 +34,7 @@ jobs:
         run: dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --configuration Release --output ./publish
 
       - name: Deploy to PRODUCTION
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@v1.5.4
         with:
           app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
           slot-name: PRODUCTION
@@ -42,7 +42,7 @@ jobs:
           package: ./publish
 
       - name: Deploy to Central US PRODUCTION Slot
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@v1.5.4
         with:
           app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
           slot-name: PRODUCTION
