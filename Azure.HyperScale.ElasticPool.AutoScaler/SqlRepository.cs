@@ -1,3 +1,4 @@
+using System.Data;
 using Azure.Core;
 using Azure.Identity;
 using Dapper;
@@ -381,7 +382,10 @@ public class SqlRepository : ISqlRepository
                     {
                         var connStr = BuildPoolDbConnectionString(_config.PoolDbConnection, dbName);
                         await using var conn = await CreateSqlConnectionAsync(connStr);
-                        await conn.ExecuteAsync("CHECKPOINT").ConfigureAwait(false);
+                        // Dapper auto-detects single-identifier SQL as a stored-procedure name.
+                        // The terminator + explicit CommandType.Text forces batch parsing so SQL Server
+                        // executes CHECKPOINT as the T-SQL command instead of EXEC CHECKPOINT.
+                        await conn.ExecuteAsync("CHECKPOINT;", commandType: CommandType.Text).ConfigureAwait(false);
                     });
                     _logger.LogInformation("Checkpoint completed for database {Database} in pool {Pool}.",
                         dbName, elasticPoolName);
