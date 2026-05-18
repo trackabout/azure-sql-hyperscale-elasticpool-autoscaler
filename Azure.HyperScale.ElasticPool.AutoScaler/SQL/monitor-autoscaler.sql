@@ -1,17 +1,17 @@
 select
     *
-from 
+from
     [hs].[AutoScalerMonitor] as m
 cross apply
     openjson(m.UsageInfo) with (
-        TimeStamp datetime,
         ElasticPoolCpuLimit int,
-        AvgCpuPercent decimal(9,3),
-        MovingAvgCpuPercent decimal(9,3),
-        WorkersPercent decimal(9,3),
-        MovingAvgWorkersPercent decimal(9,3),
-        AvgInstanceCpuPercent decimal(9,3),
-        MovingAvgInstanceCpuPercent decimal(9,3),
-        DataPoints int
+        ShortAvgCpu decimal(9,3),
+        LongAvgCpu decimal(9,3),
+        ShortInstanceCpu decimal(9,3),
+        LongInstanceCpu decimal(9,3),
+        ShortWorkersPercent decimal(9,3),
+        LongWorkersPercent decimal(9,3),
+        ShortDataIo decimal(9,3),
+        LongDataIo decimal(9,3)
     ) as u
 order by m.InsertedAt desc

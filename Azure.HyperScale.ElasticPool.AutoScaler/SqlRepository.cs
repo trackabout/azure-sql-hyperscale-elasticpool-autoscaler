@@ -1,10 +1,10 @@
 using System.Data;
+using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Polly;
 using Polly.Retry;
 
@@ -338,7 +338,7 @@ public class SqlRepository : ISqlRepository
                     elasticPool.ElasticPoolName,
                     CurrentSLO = currentVCore.ToString("F2"), // Format to 2 decimal places
                     RequestedSLO = targetVCore.ToString("F2"), // Format to 2 decimal places
-                    UsageInfo = JsonConvert.SerializeObject(elasticPool),
+                    UsageInfo = JsonSerializer.Serialize(elasticPool),
                     Notes = notes
                 }).ConfigureAwait(false);
         }
