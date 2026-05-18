@@ -17,7 +17,6 @@ var host = new HostBuilder()
             config.AddUserSecrets(typeof(AutoScalerConfiguration).Assembly, optional: true);
         }
     })
-    .ConfigureFunctionsWebApplication()
     .ConfigureFunctionsWorkerDefaults((context, builder) =>
     {
         if (isSentryLoggingEnabled && !string.IsNullOrEmpty(sentryDsn))
