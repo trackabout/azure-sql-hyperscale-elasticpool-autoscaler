@@ -61,7 +61,7 @@ jobs:
       - name: Publish Function App
         run: dotnet publish ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }} --configuration Release --output ./publish
 
-      - name: Deploy to East US 2 staging slot
+      - name: Deploy to staging slot (region 1)
         uses: Azure/functions-action@v1.5.4
         with:
           app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
@@ -69,12 +69,12 @@ jobs:
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
           package: ./publish
 
-      - name: Health check East US 2 staging slot
+      - name: Health check staging slot (region 1)
         env:
           APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
         run: |
           URL="https://${APP_NAME}-staging.azurewebsites.net/"
-          echo "Polling $URL for up to 180s..."
+          echo "Polling staging slot for up to 180s..."
           for i in $(seq 1 18); do
             code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 10 "$URL" || echo "000")
             if [ "$code" = "200" ] && grep -q "Functions" /tmp/body; then
@@ -84,10 +84,10 @@ jobs:
             echo "  attempt $i: code=$code"
             sleep 10
           done
-          echo "::error::East US 2 staging slot did not respond healthy within 180s"
+          echo "::error::Staging slot (region 1) did not respond healthy within 180s"
           exit 1
 
-      - name: Deploy to Central US staging slot
+      - name: Deploy to staging slot (region 2)
         uses: Azure/functions-action@v1.5.4
         with:
           app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
@@ -95,12 +95,12 @@ jobs:
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING }}
           package: ./publish
 
-      - name: Health check Central US staging slot
+      - name: Health check staging slot (region 2)
         env:
           APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
         run: |
           URL="https://${APP_NAME}-staging.azurewebsites.net/"
-          echo "Polling $URL for up to 180s..."
+          echo "Polling staging slot for up to 180s..."
           for i in $(seq 1 18); do
             code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 10 "$URL" || echo "000")
             if [ "$code" = "200" ] && grep -q "Functions" /tmp/body; then
@@ -110,5 +110,5 @@ jobs:
             echo "  attempt $i: code=$code"
             sleep 10
           done
-          echo "::error::Central US staging slot did not respond healthy within 180s"
+          echo "::error::Staging slot (region 2) did not respond healthy within 180s"
           exit 1
