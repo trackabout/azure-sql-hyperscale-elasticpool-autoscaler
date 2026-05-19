@@ -1,22 +1,17 @@
 name: Build, Test, and Deploy to Azure Function App
 
-# Deploys to the 'staging' slot of both prod Function Apps.
-# Production swap is MANUAL — run this after validating staging:
+# Deploys to the 'staging' slot of each Function App.
+# Production rollout is a MANUAL `az functionapp deployment slot swap`
+# (re-run reverses the swap, providing rollback). See operator runbook
+# for region-specific names and the exact swap commands.
 #
-#   az functionapp deployment slot swap --slot staging --target-slot production \
-#     --subscription "TrackAbout CSP" --resource-group ta-prod-rg-2 --name ta-autoscaler-useast2
-#
-#   az functionapp deployment slot swap --slot staging --target-slot production \
-#     --subscription "TrackAbout CSP" --resource-group ta-prod-ceus-rg --name ta-autoscaler-uscentral
-#
-# Rollback: re-run the same swap command — it reverses the previous swap.
-#
-# Required GitHub secrets (staging publish profiles, one per region):
-#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING            (useast2 staging)
-#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING  (uscentral staging)
-# Fetch with:
+# Required GitHub secrets:
+#   AZURE_FUNCTIONAPP_NAME, AZURE_FUNCTIONAPP_NAME_CENTRALUS
+#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING            (region 1 staging slot)
+#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING  (region 2 staging slot)
+# Fetch a staging publish profile and set as a GH secret in one pipe:
 #   az functionapp deployment list-publishing-profiles --slot staging --xml \
-#     --subscription "TrackAbout CSP" --resource-group <rg> --name <app> \
+#     --subscription <SUB> --resource-group <RG> --name <APP> \
 #     | gh secret set <SECRET_NAME>
 
 on:
@@ -32,6 +27,20 @@ jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify required secrets are set
+        env:
+          PROFILE_USEAST2: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
+          PROFILE_CENTRALUS: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING }}
+          NAME_USEAST2: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          NAME_CENTRALUS: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
+        run: |
+          missing=0
+          [ -z "$PROFILE_USEAST2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING is not set"; missing=1; }
+          [ -z "$PROFILE_CENTRALUS" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING is not set"; missing=1; }
+          [ -z "$NAME_USEAST2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME is not set"; missing=1; }
+          [ -z "$NAME_CENTRALUS" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME_CENTRALUS is not set"; missing=1; }
+          exit $missing
+
       - name: Checkout code
         uses: actions/checkout@v5
 
@@ -60,6 +69,24 @@ jobs:
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
           package: ./publish
 
+      - name: Health check East US 2 staging slot
+        env:
+          APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+        run: |
+          URL="https://${APP_NAME}-staging.azurewebsites.net/"
+          echo "Polling $URL for up to 180s..."
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 10 "$URL" || echo "000")
+            if [ "$code" = "200" ] && grep -q "Functions" /tmp/body; then
+              echo "✓ Staging slot responding (HTTP 200, Functions placeholder present)"
+              exit 0
+            fi
+            echo "  attempt $i: code=$code"
+            sleep 10
+          done
+          echo "::error::East US 2 staging slot did not respond healthy within 180s"
+          exit 1
+
       - name: Deploy to Central US staging slot
         uses: Azure/functions-action@v1.5.4
         with:
@@ -67,3 +94,21 @@ jobs:
           slot-name: staging
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING }}
           package: ./publish
+
+      - name: Health check Central US staging slot
+        env:
+          APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
+        run: |
+          URL="https://${APP_NAME}-staging.azurewebsites.net/"
+          echo "Polling $URL for up to 180s..."
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /tmp/body -w "%{http_code}" --max-time 10 "$URL" || echo "000")
+            if [ "$code" = "200" ] && grep -q "Functions" /tmp/body; then
+              echo "✓ Staging slot responding (HTTP 200, Functions placeholder present)"
+              exit 0
+            fi
+            echo "  attempt $i: code=$code"
+            sleep 10
+          done
+          echo "::error::Central US staging slot did not respond healthy within 180s"
+          exit 1
