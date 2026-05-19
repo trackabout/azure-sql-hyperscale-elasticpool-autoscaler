@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AzureFunctionsVersion>v4</AzureFunctionsVersion>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -15,6 +15,7 @@
     <PackageReference Include="azure.resourcemanager" Version="1.14.0" />
     <PackageReference Include="azure.resourcemanager.sql" Version="1.4.0" />
     <PackageReference Include="dapper" Version="2.1.79" />
+    <!-- Pinned to exact 2.23.0. Microsoft will not bridge Worker.ApplicationInsights to WorkerService 3.x (OpenTelemetry-only). See azure-functions-dotnet-worker#3322. Migration to OTel tracked separately. Bump deliberately via PR, not via NuGet auto-resolve. -->
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.50.0" />
