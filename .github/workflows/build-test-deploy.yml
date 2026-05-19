@@ -6,9 +6,9 @@ name: Build, Test, and Deploy to Azure Function App
 # for region-specific names and the exact swap commands.
 #
 # Required GitHub secrets:
-#   AZURE_FUNCTIONAPP_NAME, AZURE_FUNCTIONAPP_NAME_CENTRALUS
+#   AZURE_FUNCTIONAPP_NAME, AZURE_FUNCTIONAPP_NAME_2
 #   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING            (region 1 staging slot)
-#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING  (region 2 staging slot)
+#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE_2_STAGING  (region 2 staging slot)
 # Fetch a staging publish profile and set as a GH secret in one pipe:
 #   az functionapp deployment list-publishing-profiles --slot staging --xml \
 #     --subscription <SUB> --resource-group <RG> --name <APP> \
@@ -29,16 +29,16 @@ jobs:
     steps:
       - name: Verify required secrets are set
         env:
-          PROFILE_USEAST2: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
-          PROFILE_CENTRALUS: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING }}
-          NAME_USEAST2: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
-          NAME_CENTRALUS: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
+          PROFILE_1: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING }}
+          PROFILE_2: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_2_STAGING }}
+          NAME_1: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          NAME_2: ${{ secrets.AZURE_FUNCTIONAPP_NAME_2 }}
         run: |
           missing=0
-          [ -z "$PROFILE_USEAST2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING is not set"; missing=1; }
-          [ -z "$PROFILE_CENTRALUS" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING is not set"; missing=1; }
-          [ -z "$NAME_USEAST2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME is not set"; missing=1; }
-          [ -z "$NAME_CENTRALUS" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME_CENTRALUS is not set"; missing=1; }
+          [ -z "$PROFILE_1" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_STAGING is not set"; missing=1; }
+          [ -z "$PROFILE_2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_PUBLISH_PROFILE_2_STAGING is not set"; missing=1; }
+          [ -z "$NAME_1" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME is not set"; missing=1; }
+          [ -z "$NAME_2" ] && { echo "::error::Secret AZURE_FUNCTIONAPP_NAME_2 is not set"; missing=1; }
           exit $missing
 
       - name: Checkout code
@@ -90,14 +90,14 @@ jobs:
       - name: Deploy to staging slot (region 2)
         uses: Azure/functions-action@v1.5.4
         with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME_2 }}
           slot-name: staging
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_CENTRALUS_STAGING }}
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE_2_STAGING }}
           package: ./publish
 
       - name: Health check staging slot (region 2)
         env:
-          APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_CENTRALUS }}
+          APP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME_2 }}
         run: |
           URL="https://${APP_NAME}-staging.azurewebsites.net/"
           echo "Polling staging slot for up to 180s..."
