@@ -12,6 +12,7 @@ public class AutoScalerTests
     private readonly Mock<IErrorRecorder> _errorRecorderMock;
     private readonly Mock<IAzureResourceService> _azureResourceServiceMock;
     private readonly Mock<ILogger<AutoScaler>> _loggerMock;
+    private readonly Mock<IRunHeartbeat> _heartbeatMock;
 
     public AutoScalerTests()
     {
@@ -60,8 +61,9 @@ public class AutoScalerTests
         _errorRecorderMock = new Mock<IErrorRecorder>();
         _azureResourceServiceMock = new Mock<IAzureResourceService>();
         _loggerMock = new Mock<ILogger<AutoScaler>>();
+        _heartbeatMock = new Mock<IRunHeartbeat>();
 
-        _autoScaler = new AutoScaler(_loggerMock.Object, _config, _sqlRepositoryMock.Object, _errorRecorderMock.Object, _azureResourceServiceMock.Object);
+        _autoScaler = new AutoScaler(_loggerMock.Object, _config, _sqlRepositoryMock.Object, _errorRecorderMock.Object, _azureResourceServiceMock.Object, _heartbeatMock.Object);
     }
 
     [Fact]
@@ -623,6 +625,217 @@ public class AutoScalerTests
         _azureResourceServiceMock.Verify(service => service.ScaleElasticPoolAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()), Times.Never);
     }
 
+    [Fact]
+    public async Task DoTheThing_RunEvaluatesPools_RecordsHeartbeat()
+    {
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync([new UsageInfo { ElasticPoolName = "test-pool1", ElasticPoolCpuLimit = 6 }]);
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted("test-sql-instance-name"), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_NoPoolsToConsider_RecordsHeartbeat()
+    {
+        // Every pool in cool-down or transition is a healthy run with nothing to do.
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync([]);
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted("test-sql-instance-name"), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_PermissionFailure_NoHeartbeat_AndLogsWarningNotError()
+    {
+        // The failed pool lookup already recorded the error with its exception;
+        // a second Error here would become a second, misleading Sentry event.
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(false);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+        _loggerMock.Verify(l => l.Log(LogLevel.Error, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Never);
+        _loggerMock.Verify(l => l.Log(LogLevel.Warning, It.IsAny<EventId>(), It.IsAny<It.IsAnyType>(), It.IsAny<Exception?>(), It.IsAny<Func<It.IsAnyType, Exception?, string>>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_NullMetrics_NoHeartbeat()
+    {
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync((IEnumerable<UsageInfo>?)null);
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_UnexpectedException_NoHeartbeat()
+    {
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ThrowsAsync(new TimeoutException("master database unreachable"));
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_NoMetricsForAnyPool_NoHeartbeat()
+    {
+        // The repository drops a pool from the results when its metrics query fails,
+        // so an empty list means no pool was evaluated.
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(new List<UsageInfo>());
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_MetricsMissingForOnePool_NoHeartbeat()
+    {
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1", "test-pool2"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync([HoldingPool("test-pool1")]);
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_PoolNamesDifferOnlyByCase_RecordsHeartbeat()
+    {
+        // SQL Server returns the pool name in its stored casing, which can differ from the setting.
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync([HoldingPool("TEST-POOL1")]);
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted("test-sql-instance-name"), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_ScalingSucceeds_RecordsHeartbeat()
+    {
+        SetUpRunThatScalesUp();
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted("test-sql-instance-name"), Times.Once);
+    }
+
+    [Fact]
+    public async Task DoTheThing_ScalingReportsFailure_NoHeartbeat()
+    {
+        SetUpRunThatScalesUp();
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .ReturnsAsync(false);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_ScalingThrows_NoHeartbeat()
+    {
+        SetUpRunThatScalesUp();
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .ThrowsAsync(new InvalidOperationException("simulated scaling failure"));
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DoTheThing_CheckpointFailsButScalingSucceeds_RecordsHeartbeat()
+    {
+        // Checkpoints are best-effort, so a failed one is not a failed run.
+        SetUpRunThatScalesUp();
+        _sqlRepositoryMock.Setup(repo => repo.CheckpointDatabasesInPoolAsync(It.IsAny<string>()))
+            .ThrowsAsync(new TimeoutException("simulated checkpoint failure"));
+        _azureResourceServiceMock.Setup(service => service.ScaleElasticPoolAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
+            .ReturnsAsync(true);
+
+        await _autoScaler.DoTheThing();
+
+        _heartbeatMock.Verify(h => h.RunCompleted("test-sql-instance-name"), Times.Once);
+    }
+
+    // Metrics between the low and high thresholds, so the pool neither scales up nor down.
+    private UsageInfo HoldingPool(string poolName)
+    {
+        return new UsageInfo
+        {
+            ElasticPoolName = poolName,
+            ElasticPoolCpuLimit = 6,
+            ShortAvgCpu = _config.LowCpuPercent + 1,
+            LongAvgCpu = _config.LowCpuPercent + 1
+        };
+    }
+
+    private void SetUpRunThatScalesUp()
+    {
+        _config.IsDryRun = false;
+        _azureResourceServiceMock.Setup(service => service.CheckPermissionsAsync())
+            .ReturnsAsync(true);
+        _sqlRepositoryMock.Setup(repo => repo.GetPoolsToConsider())
+            .ReturnsAsync(["test-pool1"]);
+        _sqlRepositoryMock.Setup(repo => repo.SamplePoolMetricsAsync(It.IsAny<List<string>>()))
+            .ReturnsAsync(
+            [
+                new UsageInfo
+                {
+                    ElasticPoolName = "test-pool1",
+                    ElasticPoolCpuLimit = 6,
+                    ShortAvgCpu = _config.HighCpuPercent + 1,
+                    LongAvgCpu = _config.HighCpuPercent + 1
+                }
+            ]);
+    }
+
     // Write a test to check that an overridden floor is respected
     [Fact]
     public void GetNewPoolTarget_RespectsOverriddenFloor()
@@ -742,7 +955,7 @@ public class AutoScalerTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
             .Callback(() => callOrder.Add("Scale"))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
 
         // Act
         await _autoScaler.DoTheThing();
@@ -902,7 +1115,7 @@ public class AutoScalerTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<PoolTargetSettings>(), It.IsAny<UsageInfo>(), It.IsAny<double>()))
             .Callback(() => callOrder.Add("Scale"))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
 
         // Act
         await _autoScaler.DoTheThing();

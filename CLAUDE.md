@@ -81,6 +81,7 @@ All settings come from Azure Function app settings / `local.settings.json`. Key 
 - **Bounds**: `VCoreFloor`, `VCoreCeiling`, `VCoreOptions` (comma-separated), `PerDatabaseMaximums` (1:1 with VCoreOptions)
 - **Behavior**: `ScaleUpSteps` (default 1), `CoolDownPeriodSeconds`, `MaxExpectedScalingTimeSeconds`, `IsDryRun`, `CheckpointConcurrency` (default 5, range 1-25, max concurrent CHECKPOINT operations per pool before scaling), `PostCheckpointDelaySeconds` (default 3, seconds to wait after checkpoint completes before scaling)
 - **ElasticPools**: Comma-separated, optional per-pool vCore floor via `PoolName:vCore` syntax
+- **Sentry**: `SentryDsn` (optional; unset means Sentry is off), `SentryRepeatWindowSeconds` (default 900; repeats of an error are held back from Sentry for this long; 0 sends every event)
 
 ## Important Behaviors
 

@@ -23,7 +23,7 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
     /// <param name="serverName">The SQL Server name.</param>
     /// <param name="elasticPoolName">The Elastic Pool name.</param>
     /// <returns>The Elastic Pool Azure resource.</returns>
-    public async Task<ElasticPoolResource?> GetElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName)
+    public virtual async Task<ElasticPoolResource?> GetElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName)
     {
         try
         {
@@ -55,7 +55,8 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
                 var elasticPool = await GetElasticPoolAsync(_config.ResourceGroupName, _config.SqlInstanceName, pool).ConfigureAwait(false);
                 if (elasticPool == null)
                 {
-                    _logger.LogError($"Failed to access elastic pool: {pool}");
+                    // GetElasticPoolAsync already recorded the error with its exception.
+                    _logger.LogWarning($"Could not read elastic pool {pool}; see the preceding error for the cause.");
                     return false;
                 }
             }
@@ -77,8 +78,12 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
     /// <param name="newPoolSettings">The new pool settings.</param>
     /// <param name="usageInfo">The usage information.</param>
     /// <param name="currentVCore">The current vCore count.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
-    public async Task ScaleElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName, PoolTargetSettings newPoolSettings, UsageInfo usageInfo, double currentVCore)
+    /// <returns>
+    /// False when the scaling attempt failed. True when Azure accepted the update, and also for the
+    /// outcomes the autoscaler expects: the pool is already at the target size, or a geo-replication
+    /// conflict that the next run retries.
+    /// </returns>
+    public async Task<bool> ScaleElasticPoolAsync(string resourceGroupName, string serverName, string elasticPoolName, PoolTargetSettings newPoolSettings, UsageInfo usageInfo, double currentVCore)
     {
         try
         {
@@ -87,14 +92,14 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
             if (elasticPool == null)
             {
                 _errorRecorder.RecordError($"Elastic Pool Azure resource '{elasticPoolName}' not found.");
-                return;
+                return false;
             }
 
             // Check if the Elastic Pool is already at the desired vCore count
             if (elasticPool.Data.Sku.Capacity == (int)newPoolSettings.VCore)
             {
                 _errorRecorder.RecordError($"{elasticPoolName}: Pool is already at {newPoolSettings.VCore} vCores. Nothing to do.");
-                return;
+                return true;
             }
 
             // Update the SKU to the desired vCore count
@@ -122,6 +127,7 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
 
             // Write new target SLO to monitor table
             await _sqlRepository.WriteToAutoScaleMonitorTableAsync(usageInfo, currentVCore, newPoolSettings.VCore).ConfigureAwait(false);
+            return true;
         }
         catch (RequestFailedException ex) when (ex.Status == 409)
         {
@@ -139,6 +145,7 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
                         currentVCore,
                         newPoolSettings.VCore,
                         isGeoReplicationDelay: true).ConfigureAwait(false);
+                    return true;
                 }
                 else
                 {
@@ -155,5 +162,7 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
         {
             _errorRecorder.RecordError(ex, $"{elasticPoolName}: Failed to scale pool to {newPoolSettings.VCore} vCores.");
         }
+
+        return false;
     }
 }

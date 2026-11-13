@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.ApplicationInsights;
 using Sentry.Azure.Functions.Worker;
 
 var sentryDsn = Environment.GetEnvironmentVariable("SentryDsn");
@@ -26,8 +27,24 @@ var host = new HostBuilder()
                 options.Dsn = sentryDsn;
                 options.Debug = false;
                 options.TracesSampleRate = 0.0;     //Tracing is not required for this.
+                options.DefaultTags["SqlInstanceName"] = context.Configuration["SqlInstanceName"] ?? "unknown";
+
+                // The timer fires every 15 seconds, so a persistent fault repeats about 5,760 times a day.
+                // Send each distinct error at most once per window so one fault cannot exhaust the Sentry quota.
+                var repeatWindow = SentryEventThrottle.WindowFromConfiguration(context.Configuration);
+                if (repeatWindow > TimeSpan.Zero)
+                {
+                    var throttle = new SentryEventThrottle(repeatWindow, TimeProvider.System);
+                    options.SetBeforeSend((sentryEvent, _) => throttle.Filter(sentryEvent));
+                }
             });
         }
+    })
+    .ConfigureLogging(logging =>
+    {
+        // The worker sends only Warning and above to Application Insights. Let the
+        // heartbeat's Information line through so an alert can watch for it.
+        logging.AddFilter<ApplicationInsightsLoggerProvider>(typeof(RunHeartbeat).FullName, LogLevel.Information);
     })
     .ConfigureServices(services =>
     {
@@ -40,12 +57,8 @@ var host = new HostBuilder()
             return new AutoScalerConfiguration(configuration);
         });
         services.AddSingleton<IAutoScalerConfiguration>(sp => sp.GetRequiredService<AutoScalerConfiguration>());
-        services.AddSingleton<IErrorRecorder, ErrorRecorder>(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<ErrorRecorder>>();
-            var autoScalerConfig = sp.GetRequiredService<AutoScalerConfiguration>();
-            return new ErrorRecorder(logger, autoScalerConfig);
-        });
+        services.AddSingleton<IErrorRecorder, ErrorRecorder>();
+        services.AddSingleton<IRunHeartbeat, RunHeartbeat>();
         services.AddSingleton<ISqlRepository, SqlRepository>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<SqlRepository>>();
