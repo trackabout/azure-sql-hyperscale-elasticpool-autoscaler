@@ -55,7 +55,8 @@ public class AzureResourceService(AutoScalerConfiguration config, ILogger<AzureR
                 var elasticPool = await GetElasticPoolAsync(_config.ResourceGroupName, _config.SqlInstanceName, pool).ConfigureAwait(false);
                 if (elasticPool == null)
                 {
-                    _logger.LogError($"Failed to access elastic pool: {pool}");
+                    // GetElasticPoolAsync already recorded the error with its exception.
+                    _logger.LogWarning($"Could not read elastic pool {pool}; see the preceding error for the cause.");
                     return false;
                 }
             }

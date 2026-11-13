@@ -15,7 +15,8 @@ public class AutoScaler(
     IAutoScalerConfiguration autoScalerConfig,
     ISqlRepository sqlRepository,
     IErrorRecorder errorRecorder,
-    IAzureResourceService azureResourceService)
+    IAzureResourceService azureResourceService,
+    IRunHeartbeat runHeartbeat)
 {
 
     private IErrorRecorder _errorRecorder = errorRecorder ?? throw new ArgumentNullException(nameof(errorRecorder));
@@ -23,6 +24,7 @@ public class AutoScaler(
     private ILogger<AutoScaler> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     private IAutoScalerConfiguration _config = autoScalerConfig ?? throw new ArgumentNullException(nameof(autoScalerConfig));
     private IAzureResourceService _azureResourceService = azureResourceService ?? throw new ArgumentNullException(nameof(azureResourceService));
+    private IRunHeartbeat _runHeartbeat = runHeartbeat ?? throw new ArgumentNullException(nameof(runHeartbeat));
 
     [Function("AutoScaler")]
     public async Task Run([TimerTrigger("*/15 * * * * *")] TimerInfo myTimer)
@@ -45,7 +47,9 @@ public class AutoScaler(
             var hasPermissions = await _azureResourceService.CheckPermissionsAsync().ConfigureAwait(false);
             if (!hasPermissions)
             {
-                _logger.LogError("Insufficient permissions to access elastic pools.");
+                // Warning, not Error: the failed pool lookup already recorded the cause as an
+                // error, and permissions are only one of the reasons that lookup can fail.
+                _logger.LogWarning("Could not read the elastic pools from Azure; skipping this run. The preceding error has the cause.");
                 return false;
             }
 
@@ -53,6 +57,7 @@ public class AutoScaler(
             if (poolsToConsider.Count == 0)
             {
                 _logger.LogInformation($"No pools to left to evaluate for server {_config.SqlInstanceName}.");
+                _runHeartbeat.RunCompleted(_config.SqlInstanceName);
                 return false;
             }
 
@@ -68,6 +73,8 @@ public class AutoScaler(
             {
                 await EvaluateMetrics(usageInfo).ConfigureAwait(false);
             }
+
+            _runHeartbeat.RunCompleted(_config.SqlInstanceName);
         }
         catch (Exception ex)
         {

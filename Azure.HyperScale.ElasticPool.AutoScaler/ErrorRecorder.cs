@@ -2,28 +2,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Azure.HyperScale.ElasticPool.AutoScaler
 {
-    public class ErrorRecorder(ILogger<ErrorRecorder> logger, AutoScalerConfiguration autoScalerConfig) : IErrorRecorder
+    /// <summary>
+    /// Records an error once. When Sentry is configured, its logger integration turns each
+    /// LogError into one Sentry event, so this class must not also capture to Sentry directly;
+    /// doing so sent each failure two or three times.
+    /// </summary>
+    public class ErrorRecorder(ILogger<ErrorRecorder> logger) : IErrorRecorder
     {
-        private readonly ILogger<ErrorRecorder> logger = logger;
-        private readonly AutoScalerConfiguration autoScalerConfig = autoScalerConfig;
-        private const string SentryTagSqlInstanceName = "SqlInstanceName";
-
         public void RecordError(Exception? ex, string message)
         {
             logger.LogError(ex, message);
-
-            if (autoScalerConfig.IsSentryLoggingEnabled)
-            {
-                SentrySdk.ConfigureScope(scope =>
-                {
-                    scope.SetTag(SentryTagSqlInstanceName, autoScalerConfig.SqlInstanceName);
-                });
-
-                if (ex != null)
-                    SentrySdk.CaptureException(ex);
-
-                SentrySdk.CaptureMessage(message, SentryLevel.Error);
-            }
         }
 
         public void RecordError(string message)
