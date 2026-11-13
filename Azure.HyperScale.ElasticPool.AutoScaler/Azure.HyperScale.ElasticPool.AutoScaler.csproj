@@ -14,16 +14,18 @@
     <PackageReference Include="azure.identity" Version="1.21.0" />
     <PackageReference Include="azure.resourcemanager" Version="1.14.0" />
     <PackageReference Include="azure.resourcemanager.sql" Version="1.4.0" />
-    <PackageReference Include="dapper" Version="2.1.79" />
+    <PackageReference Include="dapper" Version="2.1.89" />
     <!-- Pinned to exact 2.23.0. Microsoft will not bridge Worker.ApplicationInsights to WorkerService 3.x (OpenTelemetry-only). See azure-functions-dotnet-worker#3322. Migration to OTel tracked separately. Bump deliberately via PR, not via NuGet auto-resolve. -->
     <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.50.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="2.51.0" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
-    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.7" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
     <PackageReference Include="microsoft.data.sqlclient" Version="6.1.4" />
-    <PackageReference Include="Polly" Version="8.6.6" />
+    <PackageReference Include="Polly" Version="8.9.1" />
     <PackageReference Include="Sentry.Azure.Functions.Worker" Version="5.16.3" />
+    <!-- Not used directly. Overrides the 9.0.x/8.0.x that Microsoft.Data.SqlClient pulls in, which has CVE-2026-84008 (GHSA-846f-f764-76mx, high). Remove once SqlClient depends on a patched version. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
   </ItemGroup>
   <ItemGroup>
     <None Update="host.json">
