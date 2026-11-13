@@ -4,6 +4,16 @@
 
 Open-source autoscaler for Azure SQL Hyperscale Elastic Pools, filling a gap where Microsoft provides no built-in autoscaling. Built by Larry Silverman / TrackAbout, Inc. Blog post: https://devblogs.microsoft.com/azure-sql/auto-scaling-hyperscale-elastic-pools/
 
+## Public Repository
+
+This repository is public. Everything committed or posted here (code, tests, comments, commit messages, PR titles and descriptions, issue and review comments) is readable by anyone, and GitHub keeps edit history, force-pushed commits and closed PRs. Write it all for an outside user of the autoscaler.
+
+- **Never reveal the maintainer's operations.** No server, pool, database, resource group, subscription, Function App or region names from a real deployment; no incident dates, durations, error counts or timelines; no monitoring, alerting or on-call setup (action groups, Sentry org or projects, quotas, who gets paged); no deployment or release process beyond what the workflow files already show; no names of internal teams, people or other internal systems.
+- **Use generic placeholders** in tests, examples and docs: `example-sql-server`, `example-pool-1`, `example-rg`.
+- **Describe a fix by the general failure it handles**, not by the incident that exposed it. "When every run fails, the 15-second timer sends thousands of identical Sentry events a day" is fine. "Our production server in <region> failed for <N> days last <month>" is not.
+- **Draft first, post only after approval.** Write commit messages, PR titles and descriptions, and comments as local drafts. Show them to the maintainer and wait for approval before any `git push`, `gh pr create`, `gh pr edit`, `gh pr comment` or `gh issue` command.
+- **Before posting, search the diff, the commit messages and the PR text** for the real deployment's resource names and for incident details, and replace any you find.
+
 ## Tech Stack
 
 - **Language**: C# / .NET 8
