@@ -7,8 +7,10 @@
     <RootNamespace>CheckpointRepro</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Azure.Identity" Version="1.18.0" />
-    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.4" />
+    <!-- Not used directly. Overrides the 9.0.x/8.0.x that Microsoft.Data.SqlClient pulls in, which has CVE-2026-84008 (GHSA-846f-f764-76mx, high). Remove once SqlClient depends on a patched version. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
   </ItemGroup>
 </Project>
