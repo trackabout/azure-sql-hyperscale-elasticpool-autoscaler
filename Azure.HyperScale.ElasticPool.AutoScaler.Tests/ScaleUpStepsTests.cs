@@ -39,7 +39,8 @@ public class ScaleUpStepsTests
             config.Object,
             _sqlRepositoryMock.Object,
             _errorRecorderMock.Object,
-            _azureResourceServiceMock.Object);
+            _azureResourceServiceMock.Object,
+            Mock.Of<IRunHeartbeat>());
 
         var usageInfo = new UsageInfo
         {
@@ -94,7 +95,8 @@ public class ScaleUpStepsTests
             config.Object,
             _sqlRepositoryMock.Object,
             _errorRecorderMock.Object,
-            _azureResourceServiceMock.Object);
+            _azureResourceServiceMock.Object,
+            Mock.Of<IRunHeartbeat>());
 
         var usageInfo = new UsageInfo
         {
@@ -134,7 +136,8 @@ public class ScaleUpStepsTests
             config.Object,
             _sqlRepositoryMock.Object,
             _errorRecorderMock.Object,
-            _azureResourceServiceMock.Object);
+            _azureResourceServiceMock.Object,
+            Mock.Of<IRunHeartbeat>());
 
         var usageInfo = new UsageInfo
         {

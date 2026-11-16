@@ -150,6 +150,31 @@ The AutoScaler logs just about everything it does.
 
 Logging is sent to [Azure Application Insights](https://docs.microsoft.com/en-us/azure/azure-functions/functions-monitoring#log-custom-telemetry-in-c-functions), so actions can be monitored from an Azure Portal dashboard or alerted using Azure Monitor.
 
+### Run Heartbeat
+
+The Azure Functions host reports every run as succeeded, even a run that failed, because the AutoScaler catches and records its own errors. To tell whether runs are working, watch for the heartbeat line instead:
+
+```text
+AutoScaler run completed for server <SqlInstanceName>
+```
+
+The AutoScaler logs this line at Information level at the end of a run when both of these are true:
+
+- It read metrics for every pool it evaluated in that run. Pools that are in transition or in cool-down are skipped and don't count against the run.
+- No scaling attempt failed.
+
+It does not log the line when it can't read the pools from Azure, when the metrics query fails for any pool, when Azure rejects a scaling request, or when the run throws. A failed pre-scale checkpoint does not stop the heartbeat, because scaling goes ahead anyway.
+
+With the default 15-second timer, a healthy app logs about four heartbeat lines a minute. A run that scales a pool takes longer, so expect fewer lines while scaling is under way. To see the rate in Application Insights:
+
+```kusto
+traces
+| where message startswith "AutoScaler run completed"
+| summarize count() by bin(timestamp, 10m)
+```
+
+An Azure Monitor log alert that fires when this query returns no lines for 10 minutes tells you that runs have stopped working.
+
 ## Deployment of the Azure Function
 
 Deploy the function to Azure and set up the function's application settings using the contents of `local.settings.example.json` as a guide.
@@ -218,6 +243,49 @@ The following low and high thresholds control scaling.
 We use <https://sentry.io>, you may not.
 
 - **SentryDsn**: Specifies the Sentry Dsn. If not set, Sentry is not used.
+- **SentryRepeatWindowSeconds**: How long, in seconds, to hold back repeats of an error after sending it to Sentry. Optional. Default is `900` (15 minutes). `0` sends every event.
+
+#### Why repeats are held back
+
+The timer fires every 15 seconds. An error that happens on every run happens 240 times an hour and 5,760 times a day. Sent as-is, one persistent fault can use up a Sentry quota and bury other errors.
+
+So the AutoScaler sends the first occurrence of an error to Sentry and drops repeats of it until the window has passed. If the error is still happening after that, it sends one more event and starts a new window. With the default window, one persistent error sends 4 events an hour.
+
+This applies only to Sentry. Application Insights receives every error.
+
+#### Choosing a window
+
+| Value | What Sentry receives for one persistent error |
+|---|---|
+| not set, or `900` | The first event, then one every 15 minutes |
+| `3600` | The first event, then one an hour |
+| `0` | Every event, 240 an hour |
+
+The default suits most deployments. Reasons to change it:
+
+- **You have a small Sentry quota, or many AutoScalers report to one Sentry project.** Use a longer window to send fewer events.
+- **You have Sentry alert rules that count events**, such as "more than 50 events in an hour". Held-back repeats aren't counted, so use a shorter window or `0`.
+- **You are debugging** and need to see every event as it happens. Use `0`.
+
+A longer window means a longer wait for news. The next event for an error arrives only after the window has passed, so with a one-hour window you wait up to an hour to learn that the error is still repeating.
+
+The value must be a whole number of seconds, 0 or greater. Any other value stops the app at startup with a message that names the setting. The setting is only read when `SentryDsn` is set.
+
+#### Which errors count as repeats
+
+Two errors are the same when all three of these match:
+
+- The exception type.
+- The cause. For an Azure API error, that is the HTTP status and error code. For a SQL error, it is the error number. For anything else, it is the method that threw the exception.
+- The log message.
+
+For example, a pool lookup that fails with "forbidden" and one that fails with "too many requests" log the same message, but they have different HTTP statuses. Sentry receives both.
+
+#### The dropped_repeats value
+
+An event that follows held-back repeats carries a `dropped_repeats` value in its additional data. It is the number of repeats dropped since the previous event for that error. A value of 59 on an event with the default window means the error happened on about every run for the last 15 minutes.
+
+The count is kept in memory. It is lost if the app restarts, or if the error stops for a full window before it happens again.
 
 ### Dry Run Mode
 

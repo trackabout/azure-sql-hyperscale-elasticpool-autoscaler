@@ -13,6 +13,7 @@
     "IsDryRun": "true",
     "LongWindowLookback": "900",
     "SentryDsn": "",
+    "SentryRepeatWindowSeconds": "900",
     "ShortWindowLookback": "300",
     "LowCpuPercent": "20",
     "LowDataIoPercent": "20",
